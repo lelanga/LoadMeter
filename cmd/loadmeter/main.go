@@ -71,6 +71,17 @@ func usage() {
 }
 
 func main() {
+	// Double-clicked on Windows (no arguments): open the web UI and keep the window
+	// open on errors, instead of printing usage and closing at once.
+	doubleClicked := runtime.GOOS == "windows" && len(os.Args) < 2
+	if doubleClicked {
+		if os.Getenv("LOADMETER_WORKSPACE") == "" {
+			if home, err := os.UserHomeDir(); err == nil {
+				_ = os.Setenv("LOADMETER_WORKSPACE", filepath.Join(home, "LoadMeter-Workspace"))
+			}
+		}
+		os.Args = append(os.Args, "serve", "--open")
+	}
 	if len(os.Args) < 2 || os.Args[1] == "-h" || os.Args[1] == "--help" || os.Args[1] == "help" {
 		usage()
 		if len(os.Args) < 2 {
@@ -93,6 +104,10 @@ func main() {
 			os.Exit(int(ec)) // outcome codes (SLA failed, regression) were already reported
 		}
 		fmt.Fprintln(os.Stderr, "error:", err)
+		if doubleClicked {
+			fmt.Fprintln(os.Stderr, "\nPress Enter to close this window.")
+			_, _ = fmt.Scanln()
+		}
 		os.Exit(1)
 	}
 }

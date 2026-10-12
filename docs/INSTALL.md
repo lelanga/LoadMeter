@@ -56,7 +56,7 @@ What it does:
 4. Otherwise it stops with an error.
 5. It prints `loadmeter version` and tells you how to add the folder to your `PATH`.
 
-On Windows, use `dist/loadmeter-windows-<arch>.exe` directly.
+On Windows, use `dist/loadmeter-windows-<arch>.exe` directly. Double-clicking the .exe (no arguments) starts the web UI and opens your browser; the workspace is `%USERPROFILE%\LoadMeter-Workspace`. Close the console window to stop it.
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
