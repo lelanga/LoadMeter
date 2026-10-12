@@ -411,3 +411,16 @@ func NewScenario(name string) *Scenario {
 	return &Scenario{Version: SchemaVersion, Name: name, Variables: map[string]string{},
 		Workload: Workload{Executor: ExecConstantVUs, VUs: 1, Duration: Duration(30 * time.Second)}}
 }
+
+// Clone returns a deep copy (via JSON) of the scenario.
+func (s *Scenario) Clone() *Scenario {
+	b, err := json.Marshal(s)
+	if err != nil {
+		panic(err)
+	}
+	var c Scenario
+	if err := json.Unmarshal(b, &c); err != nil {
+		panic(err)
+	}
+	return &c
+}

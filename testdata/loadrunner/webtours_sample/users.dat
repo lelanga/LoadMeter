@@ -1,0 +1,4 @@
+username,password,region
+alice,secret,eu
+bob,secret,us
+carol,secret,apac

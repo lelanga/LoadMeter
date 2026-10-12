@@ -1,0 +1,16 @@
+[RunLogicInitRoot]
+Name="Init"
+RunLogicObjectKind="Group"
+[RunLogicRunRoot]
+Name="Run"
+RunLogicObjectKind="Group"
+RunLogicRunMode="Sequential"
+RunLogicNumOfIterations="3"
+RunLogicPaceType="Const"
+RunLogicPaceConstTime="10.000"
+[RunLogicRunRoot:Action]
+Name="Action"
+RunLogicObjectKind="Action"
+[RunLogicEndRoot]
+Name="End"
+RunLogicObjectKind="Group"

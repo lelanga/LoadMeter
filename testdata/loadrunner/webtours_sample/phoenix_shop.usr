@@ -1,0 +1,16 @@
+; Hand-written Phoenix test fixture (original content, not a recording).
+[General]
+Type=Multi
+AdditionalTypes=QTWeb
+ActiveTypes=QTWeb
+GenerateTypes=QTWeb
+ParameterFile=phoenix_shop.prm
+DefaultCfg=default.cfg
+DefaultRunLogic=default.usp
+[Actions]
+vuser_init=vuser_init.c
+Action=Action.c
+vuser_end=vuser_end.c
+[ExtraFiles]
+globals.h=
+users.dat=

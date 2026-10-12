@@ -1,0 +1,9 @@
+; Hand-written Phoenix test fixture: a non-web (Citrix ICA) script.
+[General]
+Type=Citrix_ICA
+AdditionalTypes=Citrix_ICA
+ActiveTypes=Citrix_ICA
+[Actions]
+vuser_init=vuser_init.c
+Action=Action.c
+vuser_end=vuser_end.c

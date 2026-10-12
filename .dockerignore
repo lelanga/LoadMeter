@@ -1,0 +1,5 @@
+dist/
+bin/
+phoenix-workspace/
+runs/
+.git/
