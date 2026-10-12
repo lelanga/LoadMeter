@@ -70,9 +70,13 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "\nGlobal: --workspace DIR (default ./loadmeter-workspace or $LOADMETER_WORKSPACE)\nRun 'loadmeter <command> -h' for command flags.\n")
 }
 
+// guiMode is set to "1" at link time for the windowless Windows build
+// (-ldflags "-H=windowsgui -X main.guiMode=1"): no console, errors in a message box.
+var guiMode string
+
 func main() {
-	// Double-clicked on Windows (no arguments): open the web UI and keep the window
-	// open on errors, instead of printing usage and closing at once.
+	// Double-clicked on Windows (no arguments): open the app window and keep the
+	// console open on errors, instead of printing usage and closing at once.
 	doubleClicked := runtime.GOOS == "windows" && len(os.Args) < 2
 	if doubleClicked {
 		if os.Getenv("LOADMETER_WORKSPACE") == "" {
@@ -80,7 +84,7 @@ func main() {
 				_ = os.Setenv("LOADMETER_WORKSPACE", filepath.Join(home, "LoadMeter-Workspace"))
 			}
 		}
-		os.Args = append(os.Args, "serve", "--open")
+		os.Args = append(os.Args, "serve", "--app")
 	}
 	if len(os.Args) < 2 || os.Args[1] == "-h" || os.Args[1] == "--help" || os.Args[1] == "help" {
 		usage()
@@ -102,6 +106,10 @@ func main() {
 		var ec exitCode
 		if errors.As(err, &ec) {
 			os.Exit(int(ec)) // outcome codes (SLA failed, regression) were already reported
+		}
+		if guiMode == "1" {
+			showError("Load Meter", err.Error())
+			os.Exit(1)
 		}
 		fmt.Fprintln(os.Stderr, "error:", err)
 		if doubleClicked {

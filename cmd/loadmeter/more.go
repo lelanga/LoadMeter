@@ -18,6 +18,7 @@ import (
 	"github.com/lelanga/loadmeter/internal/ai"
 	"github.com/lelanga/loadmeter/internal/app"
 	"github.com/lelanga/loadmeter/internal/assistant"
+	"github.com/lelanga/loadmeter/internal/browser"
 	"github.com/lelanga/loadmeter/internal/correlate"
 	"github.com/lelanga/loadmeter/internal/har"
 	"github.com/lelanga/loadmeter/internal/mcp"
@@ -77,7 +78,8 @@ func cmdServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	ws := fs.String("workspace", defaultWorkspace(), "workspace directory")
 	addr := fs.String("addr", defaultServeAddr, "listen address (loopback only)")
-	open := fs.Bool("open", false, "open the browser")
+	open := fs.Bool("open", false, "open the UI in your default browser")
+	appMode := fs.Bool("app", false, "open the UI in its own app window (Chrome/Chromium/Edge); closing the window stops Load Meter")
 	var allow stringList
 	fs.Var(&allow, "allow-host", "allowlist a host for this session (repeatable)")
 	if err := fs.Parse(reorder(fs, args)); err != nil {
@@ -110,17 +112,29 @@ func cmdServe(args []string) error {
 	if tf := os.Getenv("LOADMETER_TOKEN_FILE"); tf != "" {
 		_ = os.WriteFile(tf, []byte(url), 0o600)
 	}
-	if *open {
+	hs := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	stop := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		hs.Shutdown(ctx)
+	}
+	if *appMode {
+		profile := filepath.Join(safety.ConfigDir(), "app-profile")
+		sess, err := browser.LaunchApp(context.Background(), url, profile)
+		if err != nil {
+			fmt.Printf("could not open an app window (%v); opening your default browser instead\n", err)
+			openBrowser(url)
+		} else {
+			go func() { <-sess.Done; stop() }() // closing the window ends the session
+		}
+	} else if *open {
 		openBrowser(url)
 	}
-	hs := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, os.Interrupt)
 		<-sig
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		hs.Shutdown(ctx)
+		stop()
 	}()
 	if err := hs.Serve(ln); err != http.ErrServerClosed {
 		return err

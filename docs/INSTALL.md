@@ -127,3 +127,9 @@ It prints one line per check:
 ## Uninstall
 
 Delete the binary. To remove settings and logs, delete `~/.loadmeter`. To remove test data, delete the workspace folder.
+
+## Desktop app (jar and windowless Windows exe)
+
+- **`LoadMeter.jar`** (JMeter style: double-click, or `java -jar LoadMeter.jar`). Needs a Java 8+ runtime. It bundles the engine for Windows, macOS and Linux (x64 and ARM), unpacks the right one to `~/.loadmeter/jar-engine/`, starts it and opens Load Meter in its own app window. Closing the launcher window stops the engine. Build it with `scripts/dist.sh` then `scripts/build-jar.sh` (needs a JDK to build only). `LoadMeter-windows.jar` is the smaller Windows-only variant.
+- **`LoadMeter-App.exe`** (Windows, no Java needed): no console window; double-click opens the app window, and closing the window stops it. Errors appear in a dialog.
+- The app window uses Chrome, Chromium or Edge in app mode (`loadmeter serve --app`). If none is found it opens your default browser instead.
