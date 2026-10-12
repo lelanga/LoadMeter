@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 var errDataExhausted = errors.New("data source exhausted")

@@ -13,7 +13,7 @@ func TestRecordingRoutes(t *testing.T) {
 	call := func(method, target, body string) (int, map[string]any) {
 		r := httptest.NewRequest(method, target, strings.NewReader(body))
 		r.Host = "127.0.0.1:7878"
-		r.Header.Set("X-Phoenix-Token", s.Token)
+		r.Header.Set("X-LoadMeter-Token", s.Token)
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
 		var m map[string]any

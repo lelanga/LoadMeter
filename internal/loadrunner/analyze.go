@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 // Portability verdicts.

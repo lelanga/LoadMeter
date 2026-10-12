@@ -1,6 +1,6 @@
 /*
  * Hand-written fixture modelled on a generic login -> search -> order flow.
- * Targets the Phoenix mock server (internal/mockserver) on 127.0.0.1:8080.
+ * Targets the Load Meter mock server (internal/mockserver) on 127.0.0.1:8080.
  */
 Action()
 {

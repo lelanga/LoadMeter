@@ -3,7 +3,7 @@
 // task-based routing; retries; budgets; consent; redaction; activity log.
 //
 // Deterministic code (parsing, HTTP execution, metrics, validation) never
-// depends on this package. Phoenix stays fully usable with AI disabled.
+// depends on this package. Load Meter stays fully usable with AI disabled.
 package ai
 
 import (
@@ -23,8 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/redact"
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/redact"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 type Message struct {
@@ -184,7 +184,7 @@ func TierFor(task string) string {
 
 // ---------- Client ----------
 
-var ErrDisabled = errors.New("AI is not enabled; Phoenix works without it. Enable a provider in Settings → AI")
+var ErrDisabled = errors.New("AI is not enabled; Load Meter works without it. Enable a provider in Settings → AI")
 
 type Client struct {
 	Cfg  Config

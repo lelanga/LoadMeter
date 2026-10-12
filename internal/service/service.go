@@ -19,19 +19,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lelanga/phoenix/examples"
-	"github.com/lelanga/phoenix/internal/app"
-	"github.com/lelanga/phoenix/internal/correlate"
-	"github.com/lelanga/phoenix/internal/engine"
-	"github.com/lelanga/phoenix/internal/har"
-	"github.com/lelanga/phoenix/internal/jmx"
-	"github.com/lelanga/phoenix/internal/loadrunner"
-	"github.com/lelanga/phoenix/internal/mockserver"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/param"
-	"github.com/lelanga/phoenix/internal/redact"
-	"github.com/lelanga/phoenix/internal/results"
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/examples"
+	"github.com/lelanga/loadmeter/internal/app"
+	"github.com/lelanga/loadmeter/internal/correlate"
+	"github.com/lelanga/loadmeter/internal/engine"
+	"github.com/lelanga/loadmeter/internal/har"
+	"github.com/lelanga/loadmeter/internal/jmx"
+	"github.com/lelanga/loadmeter/internal/loadrunner"
+	"github.com/lelanga/loadmeter/internal/mockserver"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/param"
+	"github.com/lelanga/loadmeter/internal/redact"
+	"github.com/lelanga/loadmeter/internal/results"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 type Service struct {
@@ -749,7 +749,7 @@ func (s *Service) Demo() (string, string, error) {
 		if err != nil {
 			return "", "", err
 		}
-		srv := &http.Server{Handler: mockserver.New("phoenix-demo").Handler(), ReadHeaderTimeout: 10 * time.Second}
+		srv := &http.Server{Handler: mockserver.New("loadmeter-demo").Handler(), ReadHeaderTimeout: 10 * time.Second}
 		go srv.Serve(ln)
 		s.mockURL, s.mockClose = "http://"+ln.Addr().String(), func() { srv.Close() }
 	}

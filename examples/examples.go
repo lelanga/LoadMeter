@@ -1,4 +1,4 @@
-// Package examples embeds the sample scenarios shipped with Phoenix.
+// Package examples embeds the sample scenarios shipped with Load Meter.
 package examples
 
 import "embed"

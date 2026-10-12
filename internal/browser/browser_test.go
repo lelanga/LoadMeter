@@ -17,7 +17,7 @@ func TestFindNoBrowserGivesClearError(t *testing.T) {
 		f := none()
 		f.goos = goos
 		_, err := f.find()
-		if !errors.Is(err, ErrNotFound) || !strings.Contains(err.Error(), "PHOENIX_BROWSER") {
+		if !errors.Is(err, ErrNotFound) || !strings.Contains(err.Error(), "LOADMETER_BROWSER") {
 			t.Errorf("%s: err = %v", goos, err)
 		}
 	}
@@ -26,13 +26,13 @@ func TestFindNoBrowserGivesClearError(t *testing.T) {
 func TestFindEnvAndPathAndInstallDirs(t *testing.T) {
 	f := none()
 	f.getenv = func(k string) string {
-		if k == "PHOENIX_BROWSER" {
+		if k == "LOADMETER_BROWSER" {
 			return "/nope/chrome"
 		}
 		return ""
 	}
 	if _, err := f.find(); err == nil || !strings.Contains(err.Error(), "/nope/chrome") {
-		t.Errorf("bad PHOENIX_BROWSER: %v", err)
+		t.Errorf("bad LOADMETER_BROWSER: %v", err)
 	}
 	f = none()
 	f.lookPath = func(n string) (string, error) {
@@ -64,7 +64,7 @@ func TestFindEnvAndPathAndInstallDirs(t *testing.T) {
 }
 
 func TestArgs(t *testing.T) {
-	t.Setenv("PHOENIX_BROWSER_ARGS", "--headless=new --no-sandbox")
+	t.Setenv("LOADMETER_BROWSER_ARGS", "--headless=new --no-sandbox")
 	a := Args(Options{ProxyAddr: "127.0.0.1:9999", SPKI: "abc=", StartURL: "http://127.0.0.1:1/x"}, "/tmp/prof")
 	j := strings.Join(a, " ")
 	for _, want := range []string{"--user-data-dir=/tmp/prof", "--proxy-server=http://127.0.0.1:9999", "--proxy-bypass-list=<-loopback>",

@@ -15,31 +15,31 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/ai"
-	"github.com/lelanga/phoenix/internal/app"
-	"github.com/lelanga/phoenix/internal/assistant"
-	"github.com/lelanga/phoenix/internal/correlate"
-	"github.com/lelanga/phoenix/internal/har"
-	"github.com/lelanga/phoenix/internal/mcp"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/safety"
-	"github.com/lelanga/phoenix/internal/server"
-	"github.com/lelanga/phoenix/internal/service"
+	"github.com/lelanga/loadmeter/internal/ai"
+	"github.com/lelanga/loadmeter/internal/app"
+	"github.com/lelanga/loadmeter/internal/assistant"
+	"github.com/lelanga/loadmeter/internal/correlate"
+	"github.com/lelanga/loadmeter/internal/har"
+	"github.com/lelanga/loadmeter/internal/mcp"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/safety"
+	"github.com/lelanga/loadmeter/internal/server"
+	"github.com/lelanga/loadmeter/internal/service"
 )
 
 func init() {
-	register("serve", "Start the local web UI: phoenix serve [--addr 127.0.0.1:7878] [--open]", cmdServe)
+	register("serve", "Start the local web UI: loadmeter serve [--addr 127.0.0.1:7878] [--open]", cmdServe)
 	register("mcp", "Run the MCP server on stdio for AI assistants (Claude, ChatGPT, Gemini CLI, Cursor, VS Code)", cmdMCP)
-	register("import-har", "Import a HAR capture: phoenix import-har capture.har [--name N --include-static --keep-credentials]", cmdImportHAR)
-	register("import-jmx", "Import a JMeter plan with a compatibility report: phoenix import-jmx plan.jmx", cmdImportJMX)
-	register("import-lr", "Statically analyze/convert a LoadRunner VuGen web script folder: phoenix import-lr ./MyScript", cmdImportLR)
-	register("export-jmx", "Export a workspace scenario to JMeter .jmx: phoenix export-jmx scenario.json [-o out.jmx]", cmdExportJMX)
-	register("correlate", "Suggest/apply correlation rules for an imported scenario: phoenix correlate scenario.json [--apply ids|all --policy validated]", cmdCorrelate)
-	register("parameterize", "Suggest/apply test-data parameters: phoenix parameterize scenario.json [--apply ids|all --rows 100]", cmdParameterize)
-	register("record", "Record a script (HTTP/HTTPS) via a local proxy: phoenix record [--browser --url URL] [--to-scenario NAME] | record ca [--export F|--delete]", cmdRecord)
-	register("ask", "Natural-language control: phoenix ask \"create a 100-user 10-minute test with ramp-up\" [--file f.json --confirm]", cmdAsk)
-	register("ai", "AI provider settings: phoenix ai status | enable <light-id> <strong-id> [--cloud-consent] | disable | set-key <id> | test <id>", cmdAI)
-	register("explain", "Ask the configured AI to explain a run: phoenix explain <run-id>", cmdExplain)
+	register("import-har", "Import a HAR capture: loadmeter import-har capture.har [--name N --include-static --keep-credentials]", cmdImportHAR)
+	register("import-jmx", "Import a JMeter plan with a compatibility report: loadmeter import-jmx plan.jmx", cmdImportJMX)
+	register("import-lr", "Statically analyze/convert a LoadRunner VuGen web script folder: loadmeter import-lr ./MyScript", cmdImportLR)
+	register("export-jmx", "Export a workspace scenario to JMeter .jmx: loadmeter export-jmx scenario.json [-o out.jmx]", cmdExportJMX)
+	register("correlate", "Suggest/apply correlation rules for an imported scenario: loadmeter correlate scenario.json [--apply ids|all --policy validated]", cmdCorrelate)
+	register("parameterize", "Suggest/apply test-data parameters: loadmeter parameterize scenario.json [--apply ids|all --rows 100]", cmdParameterize)
+	register("record", "Record a script (HTTP/HTTPS) via a local proxy: loadmeter record [--browser --url URL] [--to-scenario NAME] | record ca [--export F|--delete]", cmdRecord)
+	register("ask", "Natural-language control: loadmeter ask \"create a 100-user 10-minute test with ramp-up\" [--file f.json --confirm]", cmdAsk)
+	register("ai", "AI provider settings: loadmeter ai status | enable <light-id> <strong-id> [--cloud-consent] | disable | set-key <id> | test <id>", cmdAI)
+	register("explain", "Ask the configured AI to explain a run: loadmeter explain <run-id>", cmdExplain)
 }
 
 func newService(ws string, allow []string) (*service.Service, error) {
@@ -95,11 +95,11 @@ func cmdServe(args []string) error {
 	srv := server.New(svc)
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
-		return fmt.Errorf("cannot listen on %s: %w (is another Phoenix running? try --addr 127.0.0.1:0)", *addr, err)
+		return fmt.Errorf("cannot listen on %s: %w (is another Load Meter running? try --addr 127.0.0.1:0)", *addr, err)
 	}
 	url := fmt.Sprintf("http://%s/?token=%s", ln.Addr().String(), srv.Token)
-	fmt.Printf("Phoenix Performance UI: %s\nworkspace: %s\nPress Ctrl+C to stop.\n", url, *ws)
-	if tf := os.Getenv("PHOENIX_TOKEN_FILE"); tf != "" {
+	fmt.Printf("Load Meter UI: %s\nworkspace: %s\nPress Ctrl+C to stop.\n", url, *ws)
+	if tf := os.Getenv("LOADMETER_TOKEN_FILE"); tf != "" {
 		_ = os.WriteFile(tf, []byte(url), 0o600)
 	}
 	if *open {
@@ -139,7 +139,7 @@ func cmdMCP(args []string) error {
 	if *httpAddr != "" {
 		return runMCPHTTP(svc, *httpAddr)
 	}
-	fmt.Fprintf(os.Stderr, "phoenix MCP server on stdio (workspace %s)\n", abs)
+	fmt.Fprintf(os.Stderr, "loadmeter MCP server on stdio (workspace %s)\n", abs)
 	return (&mcp.Server{Svc: svc}).Serve(context.Background(), os.Stdin, os.Stdout, os.Stderr)
 }
 
@@ -174,7 +174,7 @@ func cmdImportHAR(args []string) error {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: phoenix import-har capture.har")
+		return fmt.Errorf("usage: loadmeter import-har capture.har")
 	}
 	b, err := os.ReadFile(fs.Arg(0))
 	if err != nil {
@@ -207,7 +207,7 @@ func cmdImportHAR(args []string) error {
 			fmt.Printf("  %s  %-14s %-10s mode=%s uses=%d\n", p.ID, p.Column, p.Kind, p.Mode, len(p.Uses))
 		}
 	}
-	fmt.Printf("next: phoenix correlate %s --apply all   then: phoenix run %s\n", res.File, filepath.Join(svc.WS.ScenariosDir(), res.File))
+	fmt.Printf("next: loadmeter correlate %s --apply all   then: loadmeter run %s\n", res.File, filepath.Join(svc.WS.ScenariosDir(), res.File))
 	return nil
 }
 
@@ -234,7 +234,7 @@ func cmdImportJMX(args []string) error {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: phoenix import-jmx plan.jmx")
+		return fmt.Errorf("usage: loadmeter import-jmx plan.jmx")
 	}
 	b, err := os.ReadFile(fs.Arg(0))
 	if err != nil {
@@ -269,7 +269,7 @@ func cmdImportLR(args []string) error {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: phoenix import-lr <vugen-script-folder>")
+		return fmt.Errorf("usage: loadmeter import-lr <vugen-script-folder>")
 	}
 	dir := fs.Arg(0)
 	ents, err := os.ReadDir(dir)
@@ -326,7 +326,7 @@ func cmdExportJMX(args []string) error {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: phoenix export-jmx scenario.json")
+		return fmt.Errorf("usage: loadmeter export-jmx scenario.json")
 	}
 	file := filepath.Base(fs.Arg(0))
 	svc, err := newService(*ws, nil)
@@ -374,7 +374,7 @@ func cmdCorrelate(args []string) error {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: phoenix correlate scenario.json [--apply all]")
+		return fmt.Errorf("usage: loadmeter correlate scenario.json [--apply all]")
 	}
 	file := filepath.Base(fs.Arg(0))
 	svc, err := newService(*ws, allow)
@@ -406,7 +406,7 @@ func cmdCorrelate(args []string) error {
 			return printJSON(res)
 		}
 		printCandidates(res.Candidates, res.Unexplained)
-		fmt.Printf("apply with: phoenix correlate %s --apply all   (policy %s replays the scenario to validate)\n", file, *policy)
+		fmt.Printf("apply with: loadmeter correlate %s --apply all   (policy %s replays the scenario to validate)\n", file, *policy)
 		return nil
 	}
 	var ids []string
@@ -452,7 +452,7 @@ func cmdParameterize(args []string) error {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: phoenix parameterize scenario.json [--apply all]")
+		return fmt.Errorf("usage: loadmeter parameterize scenario.json [--apply all]")
 	}
 	file := filepath.Base(fs.Arg(0))
 	svc, err := newService(*ws, nil)
@@ -496,7 +496,7 @@ func cmdAsk(args []string) error {
 	}
 	prompt := strings.Join(fs.Args(), " ")
 	if prompt == "" {
-		return fmt.Errorf(`usage: phoenix ask "find dynamic tokens and suggest correlation rules"`)
+		return fmt.Errorf(`usage: loadmeter ask "find dynamic tokens and suggest correlation rules"`)
 	}
 	svc, err := newService(*ws, nil)
 	if err != nil {
@@ -539,7 +539,7 @@ func cmdAI(args []string) error {
 		args = []string{"status"}
 	}
 	if args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		fmt.Fprintln(os.Stderr, "usage: phoenix ai status | enable [--cloud-consent] <light> <strong> | disable | set-key <provider> | test <provider>")
+		fmt.Fprintln(os.Stderr, "usage: loadmeter ai status | enable [--cloud-consent] <light> <strong> | disable | set-key <provider> | test <provider>")
 		return nil
 	}
 	cfg, err := ai.LoadConfig()
@@ -559,11 +559,11 @@ func cmdAI(args []string) error {
 			return err
 		}
 		if fs.NArg() != 2 {
-			return fmt.Errorf("usage: phoenix ai enable <light-provider-id> <strong-provider-id> [--cloud-consent]")
+			return fmt.Errorf("usage: loadmeter ai enable <light-provider-id> <strong-provider-id> [--cloud-consent]")
 		}
 		for _, id := range fs.Args() {
 			if _, ok := cfg.Provider(id); !ok {
-				return fmt.Errorf("unknown provider %q (see phoenix ai status)", id)
+				return fmt.Errorf("unknown provider %q (see loadmeter ai status)", id)
 			}
 		}
 		cfg.Enabled, cfg.CloudConsent = true, *consent
@@ -577,7 +577,7 @@ func cmdAI(args []string) error {
 		return ai.SaveConfig(cfg)
 	case "set-key":
 		if len(args) != 2 {
-			return fmt.Errorf("usage: phoenix ai set-key <provider-id>   (reads the key from stdin)")
+			return fmt.Errorf("usage: loadmeter ai set-key <provider-id>   (reads the key from stdin)")
 		}
 		fmt.Fprint(os.Stderr, "paste API key and press Enter: ")
 		var key string
@@ -588,7 +588,7 @@ func cmdAI(args []string) error {
 		fmt.Println("key stored in", ai.KeyBackend())
 	case "test":
 		if len(args) != 2 {
-			return fmt.Errorf("usage: phoenix ai test <provider-id>")
+			return fmt.Errorf("usage: loadmeter ai test <provider-id>")
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
@@ -610,7 +610,7 @@ func cmdExplain(args []string) error {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: phoenix explain <run-id>")
+		return fmt.Errorf("usage: loadmeter explain <run-id>")
 	}
 	svc, err := newService(*ws, nil)
 	if err != nil {

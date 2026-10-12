@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 func TestRecordingSessionToScenario(t *testing.T) {

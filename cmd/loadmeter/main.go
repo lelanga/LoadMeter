@@ -1,4 +1,4 @@
-// Command phoenix is the Phoenix Performance CLI: run tests, import/convert
+// Command loadmeter is the Load Meter CLI: run tests, import/convert
 // artifacts, serve the web UI and expose an MCP server for AI assistants.
 package main
 
@@ -21,13 +21,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lelanga/phoenix/examples"
-	"github.com/lelanga/phoenix/internal/app"
-	"github.com/lelanga/phoenix/internal/mockserver"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/report"
-	"github.com/lelanga/phoenix/internal/results"
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/examples"
+	"github.com/lelanga/loadmeter/internal/app"
+	"github.com/lelanga/loadmeter/internal/mockserver"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/report"
+	"github.com/lelanga/loadmeter/internal/results"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 type command struct {
@@ -43,22 +43,22 @@ func register(name, summary string, fn func([]string) error) {
 
 func init() {
 	register("version", "Print version information", func([]string) error {
-		fmt.Printf("phoenix %s (%s %s/%s)\n", results.Version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+		fmt.Printf("loadmeter %s (%s %s/%s)\n", results.Version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 		return nil
 	})
-	register("run", "Run a scenario: phoenix run scenario.json [--vus N --duration 1m --rate R --allow-host H]", cmdRun)
+	register("run", "Run a scenario: loadmeter run scenario.json [--vus N --duration 1m --rate R --allow-host H]", cmdRun)
 	register("validate", "Validate a scenario file without running it", cmdValidate)
 	register("demo", "Start the bundled mock server and run the sample scenario (one-click sample)", cmdDemo)
-	register("mock", "Run the deterministic mock target server: phoenix mock [--addr 127.0.0.1:8099]", cmdMock)
-	register("report", "Re-render the HTML report for a run: phoenix report <run-id> [--baseline <run-id>]", cmdReport)
-	register("compare", "Compare two runs: phoenix compare <baseline-run-id> <run-id>", cmdCompare)
+	register("mock", "Run the deterministic mock target server: loadmeter mock [--addr 127.0.0.1:8099]", cmdMock)
+	register("report", "Re-render the HTML report for a run: loadmeter report <run-id> [--baseline <run-id>]", cmdReport)
+	register("compare", "Compare two runs: loadmeter compare <baseline-run-id> <run-id>", cmdCompare)
 	register("runs", "List runs in the workspace", cmdRuns)
 	register("doctor", "Check the installation and environment", cmdDoctor)
 	register("init", "Create a workspace with the sample scenario", cmdInit)
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "Phoenix Performance %s — lightweight load testing with optional AI assistance\n\nUsage: phoenix <command> [flags]\n\nCommands:\n", results.Version)
+	fmt.Fprintf(os.Stderr, "Load Meter %s — lightweight load testing with optional AI assistance\n\nUsage: loadmeter <command> [flags]\n\nCommands:\n", results.Version)
 	names := make([]string, 0, len(commands))
 	for n := range commands {
 		names = append(names, n)
@@ -67,7 +67,7 @@ func usage() {
 	for _, n := range names {
 		fmt.Fprintf(os.Stderr, "  %-14s %s\n", n, commands[n].summary)
 	}
-	fmt.Fprintf(os.Stderr, "\nGlobal: --workspace DIR (default ./phoenix-workspace or $PHOENIX_WORKSPACE)\nRun 'phoenix <command> -h' for command flags.\n")
+	fmt.Fprintf(os.Stderr, "\nGlobal: --workspace DIR (default ./loadmeter-workspace or $LOADMETER_WORKSPACE)\nRun 'loadmeter <command> -h' for command flags.\n")
 }
 
 func main() {
@@ -102,10 +102,10 @@ type exitCode int
 func (e exitCode) Error() string { return fmt.Sprintf("exit code %d", int(e)) }
 
 func defaultWorkspace() string {
-	if d := os.Getenv("PHOENIX_WORKSPACE"); d != "" {
+	if d := os.Getenv("LOADMETER_WORKSPACE"); d != "" {
 		return d
 	}
-	return "phoenix-workspace"
+	return "loadmeter-workspace"
 }
 
 type stringList []string
@@ -180,7 +180,7 @@ func cmdRun(args []string) error {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: phoenix run scenario.json [flags]")
+		return fmt.Errorf("usage: loadmeter run scenario.json [flags]")
 	}
 	path := fs.Arg(0)
 	sc, err := app.LoadScenario(path)
@@ -332,11 +332,11 @@ func isBoolFlag(fs *flag.FlagSet, a string) bool {
 
 func cmdValidate(args []string) error {
 	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
-		fmt.Fprintln(os.Stderr, "usage: phoenix validate scenario.json")
+		fmt.Fprintln(os.Stderr, "usage: loadmeter validate scenario.json")
 		return nil
 	}
 	if len(args) != 1 {
-		return fmt.Errorf("usage: phoenix validate scenario.json")
+		return fmt.Errorf("usage: loadmeter validate scenario.json")
 	}
 	sc, err := app.LoadScenario(args[0])
 	if err != nil {
@@ -366,7 +366,7 @@ func startMock(addr string) (string, func(), error) {
 	if err != nil {
 		return "", nil, err
 	}
-	srv := &http.Server{Handler: mockserver.New("phoenix-demo").Handler(), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: mockserver.New("loadmeter-demo").Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go srv.Serve(ln)
 	return "http://" + ln.Addr().String(), func() { srv.Close() }, nil
 }
@@ -423,7 +423,7 @@ func cmdInit(args []string) error {
 	if err := writeExamples(w.ScenariosDir()); err != nil {
 		return err
 	}
-	fmt.Printf("workspace ready: %s\nsample scenario: %s\nnext: phoenix mock   (in another terminal), then: phoenix run %s\n", *ws,
+	fmt.Printf("workspace ready: %s\nsample scenario: %s\nnext: loadmeter mock   (in another terminal), then: loadmeter run %s\n", *ws,
 		filepath.Join(w.ScenariosDir(), "shop-login.json"), filepath.Join(w.ScenariosDir(), "shop-login.json"))
 	return nil
 }
@@ -499,7 +499,7 @@ func cmdReport(args []string) error {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: phoenix report <run-id>")
+		return fmt.Errorf("usage: loadmeter report <run-id>")
 	}
 	s, dir, err := loadRun(*ws, fs.Arg(0))
 	if err != nil {
@@ -536,7 +536,7 @@ func cmdCompare(args []string) error {
 		return err
 	}
 	if fs.NArg() != 2 {
-		return fmt.Errorf("usage: phoenix compare <baseline-run-id> <run-id>")
+		return fmt.Errorf("usage: loadmeter compare <baseline-run-id> <run-id>")
 	}
 	b, _, err := loadRun(*ws, fs.Arg(0))
 	if err != nil {
@@ -579,7 +579,7 @@ func cmdDoctor(args []string) error {
 	}
 	pol, err := safety.LoadPolicy()
 	check("safety policy", err, fmt.Sprintf("%s/policy.json — maxVUs %d, allowlisted hosts %d (loopback always allowed)", safety.ConfigDir(), pol.MaxVUs, len(pol.AllowedHosts)))
-	tmp, err := os.MkdirTemp("", "phoenix-doctor")
+	tmp, err := os.MkdirTemp("", "loadmeter-doctor")
 	if err == nil {
 		os.RemoveAll(tmp)
 	}

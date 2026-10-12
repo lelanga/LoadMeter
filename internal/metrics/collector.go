@@ -103,7 +103,7 @@ func NewCollector(start time.Time, raw io.Writer) *Collector {
 	if raw != nil {
 		c.rawBuf = bufio.NewWriterSize(raw, 64<<10)
 		c.raw = csv.NewWriter(c.rawBuf)
-		// JMeter JTL-compatible leading columns, plus Phoenix extras.
+		// JMeter JTL-compatible leading columns, plus Load Meter extras.
 		_ = c.raw.Write([]string{"timeStamp", "elapsed", "label", "responseCode", "responseMessage", "threadName",
 			"success", "failureMessage", "bytes", "sentBytes", "Latency", "URL", "kind"})
 	}

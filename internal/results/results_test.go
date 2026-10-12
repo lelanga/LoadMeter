@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/metrics"
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/metrics"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 var t0 = time.Unix(1_700_000_000, 0)
@@ -364,7 +364,7 @@ func TestBuild(t *testing.T) {
 	if len(s.Findings) == 0 {
 		t.Error("expected findings (SLA breach, dropped, errors)")
 	}
-	if s.Env.GoVersion == "" || s.Env.CPUs < 1 || s.Env.Phoenix == "" {
+	if s.Env.GoVersion == "" || s.Env.CPUs < 1 || s.Env.LoadMeter == "" {
 		t.Errorf("env %+v", s.Env)
 	}
 }

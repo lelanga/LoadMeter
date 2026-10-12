@@ -1,5 +1,5 @@
-// Package jmx imports Apache JMeter (.jmx, 5.x) test plans into the Phoenix
-// scenario IR and exports Phoenix scenarios back to .jmx. Every source element
+// Package jmx imports Apache JMeter (.jmx, 5.x) test plans into the Load Meter
+// scenario IR and exports Load Meter scenarios back to .jmx. Every source element
 // is accounted for in a model.CompatReport; nothing is dropped silently.
 package jmx
 

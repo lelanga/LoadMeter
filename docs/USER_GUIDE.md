@@ -1,4 +1,4 @@
-# Phoenix Performance User Guide
+# Load Meter User Guide
 
 This guide is for people who test software but do not write code. Every step shows the web UI first, then the command line.
 
@@ -8,14 +8,14 @@ This guide is for people who test software but do not write code. Every step sho
 |---|---|
 | **Scenario** | A saved test. It lists the requests a user makes, the data they use, and how much load to apply. |
 | **Request** | One call to the system under test, like opening a page or posting a form. |
-| **Transaction** | A named group of requests, like "login". Phoenix reports numbers per transaction. |
+| **Transaction** | A named group of requests, like "login". Load Meter reports numbers per transaction. |
 | **Virtual user (VU)** | A simulated person. Each VU repeats the scenario again and again. 50 VUs means 50 people using the system at the same time. |
 | **Iteration** | One full pass through the scenario by one VU. |
 | **Duration** | How long the test runs. |
 | **Ramp-up** | The time it takes to go from zero users to full load. A slow ramp-up is gentler and shows where problems begin. |
 | **Think time** | A pause between steps, like a person reading a page. Without it, VUs hammer the system much harder than real people do. |
 | **Latency / response time** | How long one request takes, in milliseconds (ms). |
-| **Percentile (p50, p90, p95, p99)** | p95 = 250 ms means 95 out of 100 requests were at least that fast. p50 is the typical request. p99 shows the slow tail. Phoenix computes percentiles from all samples. It never averages percentiles. |
+| **Percentile (p50, p90, p95, p99)** | p95 = 250 ms means 95 out of 100 requests were at least that fast. p50 is the typical request. p99 shows the slow tail. Load Meter computes percentiles from all samples. It never averages percentiles. |
 | **RPS** | Requests per second. |
 | **Error rate** | The share of requests that failed (bad status code, timeout, failed check). |
 | **Correlation** | Handling values the server creates for each visit, like session IDs and anti-forgery tokens. A recording contains the old values. They must be read from the new response and sent back. Without this, replayed logins fail. |
@@ -26,13 +26,13 @@ This guide is for people who test software but do not write code. Every step sho
 
 ## Before you start: stay safe
 
-- Phoenix only tests `127.0.0.1` (your own machine) by default.
+- Load Meter only tests `127.0.0.1` (your own machine) by default.
 - To test any other system you must allow its host. Only do this for systems you own or have permission to test. See [SECURITY.md](SECURITY.md).
 
 ## 1. Start the UI
 
 ```bash
-phoenix serve --open
+loadmeter serve --open
 ```
 
 The terminal prints a URL with a token. Open exactly that URL. The UI listens only on your computer. Press Ctrl+C in the terminal to stop it.
@@ -48,19 +48,19 @@ The switch at the top right sets your experience level. Beginner hides expert fi
 ## 2. Run the sample test
 
 1. Open **Projects / Scenarios**.
-2. Click **Run sample test**. Phoenix starts a small mock shop on your machine and creates a sample scenario for it.
+2. Click **Run sample test**. Load Meter starts a small mock shop on your machine and creates a sample scenario for it.
 3. Open **Run & Monitor**, pick the scenario, and click **Start test**.
 
 CLI equivalent (one command, includes the mock shop):
 
 ```bash
-phoenix demo
+loadmeter demo
 ```
 
 Shorter and gentler:
 
 ```bash
-phoenix demo --vus 5 --duration 10s --ramp-up 3s
+loadmeter demo --vus 5 --duration 10s --ramp-up 3s
 ```
 
 ## 3. Bring in your own test
@@ -69,16 +69,16 @@ You can import three kinds of files. Open **Import**.
 
 | Source | Button | CLI |
 |---|---|---|
-| HAR capture from your browser or from `phoenix record` | Import HAR | `phoenix import-har capture.har` |
-| JMeter test plan (`.jmx`) | Import JMX | `phoenix import-jmx plan.jmx` |
-| LoadRunner VuGen **web** script folder | Import LoadRunner | `phoenix import-lr ./MyScript` |
+| HAR capture from your browser or from `loadmeter record` | Import HAR | `loadmeter import-har capture.har` |
+| JMeter test plan (`.jmx`) | Import JMX | `loadmeter import-jmx plan.jmx` |
+| LoadRunner VuGen **web** script folder | Import LoadRunner | `loadmeter import-lr ./MyScript` |
 
-After the import you see a **compatibility report**. Each item is `supported`, `partial`, `unsupported` or `ignored`. Read the partial and unsupported lines. They say what you must fix by hand. Phoenix never runs JMeter scripts or LoadRunner C code. It only reads them. Details: [JMeter support matrix](../internal/jmx/SUPPORT_MATRIX.md) and [LoadRunner notes](../internal/loadrunner/README.md).
+After the import you see a **compatibility report**. Each item is `supported`, `partial`, `unsupported` or `ignored`. Read the partial and unsupported lines. They say what you must fix by hand. Load Meter never runs JMeter scripts or LoadRunner C code. It only reads them. Details: [JMeter support matrix](../internal/jmx/SUPPORT_MATRIX.md) and [LoadRunner notes](../internal/loadrunner/README.md).
 
 ### How to get a HAR file
 
 - In Chrome, Edge or Firefox: open DevTools, go to the **Network** tab, perform your user journey, then export as HAR ("Save all as HAR").
-- Or record plain-HTTP traffic with Phoenix (next section).
+- Or record plain-HTTP traffic with Load Meter (next section).
 
 By default the HAR import:
 
@@ -87,29 +87,29 @@ By default the HAR import:
 - groups requests into transactions.
 
 ```bash
-phoenix import-har capture.har --name checkout-flow
+loadmeter import-har capture.har --name checkout-flow
 ```
 
 The command prints the scenario path, a compatibility report, correlation candidates and parameter suggestions.
 
-## 4. Record with `phoenix record`
+## 4. Record with `loadmeter record`
 
-`phoenix record` starts a local proxy and saves what passes through it as a HAR file. It works for **plain HTTP** only. For HTTPS sites, export a HAR from your browser DevTools instead.
+`loadmeter record` starts a local proxy and saves what passes through it as a HAR file. It works for **plain HTTP** only. For HTTPS sites, export a HAR from your browser DevTools instead.
 
 ```bash
-phoenix record --out rec.har
+loadmeter record --out rec.har
 ```
 
 1. Set your browser (or client) to use the HTTP proxy `127.0.0.1:8888`. Use `--listen 127.0.0.1:9000` to change the port.
 2. Do your user journey.
-3. Press Ctrl+C in the terminal. Phoenix saves the file.
-4. Import it: `phoenix import-har rec.har`.
+3. Press Ctrl+C in the terminal. Load Meter saves the file.
+4. Import it: `loadmeter import-har rec.har`.
 
 The proxy only accepts a loopback listen address.
 
 ## 5. Review correlations
 
-After a HAR import, the Import page shows the correlation candidates. The UI also has a correlation page for each scenario. Phoenix looks for values that appear in a response and are later sent back in a request, such as session IDs, CSRF tokens, auth tokens and IDs.
+After a HAR import, the Import page shows the correlation candidates. The UI also has a correlation page for each scenario. Load Meter looks for values that appear in a response and are later sent back in a request, such as session IDs, CSRF tokens, auth tokens and IDs.
 
 For each candidate you see:
 
@@ -132,9 +132,9 @@ Validation replays requests against the target. The target host must be allowed 
 CLI:
 
 ```bash
-phoenix correlate scenario.json                      # list candidates
-phoenix correlate scenario.json --apply all          # apply and validate
-phoenix correlate scenario.json --apply c1,c2 --policy validated
+loadmeter correlate scenario.json                      # list candidates
+loadmeter correlate scenario.json --apply all          # apply and validate
+loadmeter correlate scenario.json --apply c1,c2 --policy validated
 ```
 
 Candidate IDs are printed by the first command. If your scenario points at a variable like `${baseUrl}`, give it a value for validation: `--set baseUrl=http://127.0.0.1:8099`. If validation fails, the change is rolled back and the command exits with code 4.
@@ -143,11 +143,11 @@ The correlation step needs the recording saved during HAR import. See [KNOWN_LIM
 
 ## 6. Parameterize test data
 
-Phoenix also finds business inputs (user names, search terms, product IDs, amounts, dates) that should differ per user. Applying a suggestion writes a synthetic CSV file and rewrites the requests to use it.
+Load Meter also finds business inputs (user names, search terms, product IDs, amounts, dates) that should differ per user. Applying a suggestion writes a synthetic CSV file and rewrites the requests to use it.
 
 ```bash
-phoenix parameterize scenario.json                   # list suggestions
-phoenix parameterize scenario.json --apply all --rows 200
+loadmeter parameterize scenario.json                   # list suggestions
+loadmeter parameterize scenario.json --apply all --rows 200
 ```
 
 You can replace the generated CSV with real data. The first row is the header. Each column becomes a variable. See [SCENARIO_FORMAT.md](SCENARIO_FORMAT.md#data-sources).
@@ -161,7 +161,7 @@ The editor tabs are **Steps**, **General & data**, **Workload**, **SLAs** and (A
 CLI:
 
 ```bash
-phoenix validate scenario.json
+loadmeter validate scenario.json
 ```
 
 ## 8. Set users, duration and ramp-up
@@ -182,8 +182,8 @@ Pick **users** (closed model) to ask "how does it behave with N people?". Pick *
 CLI flags (they override the scenario file):
 
 ```bash
-phoenix run scenario.json --vus 50 --duration 5m --ramp-up 1m
-phoenix run scenario.json --rate 20 --duration 5m --max-vus 100
+loadmeter run scenario.json --vus 50 --duration 5m --ramp-up 1m
+loadmeter run scenario.json --rate 20 --duration 5m --max-vus 100
 ```
 
 Notes:
@@ -197,12 +197,12 @@ Notes:
 
 Click **Start test** on **Run & Monitor**. The live dashboard updates every second: active users, requests per second, response-time percentiles, error rate, and charts. Click **STOP TEST** to stop gracefully. Click again to force a stop.
 
-If a target is not on your computer, Phoenix shows a warning. A test with many users against a non-local host asks you to confirm first. A host that is not allowed is refused. See [SECURITY.md](SECURITY.md).
+If a target is not on your computer, Load Meter shows a warning. A test with many users against a non-local host asks you to confirm first. A host that is not allowed is refused. See [SECURITY.md](SECURITY.md).
 
 CLI:
 
 ```bash
-phoenix run scenario.json --vus 20 --duration 2m
+loadmeter run scenario.json --vus 20 --duration 2m
 ```
 
 While it runs you see a line every 2 seconds. Press Ctrl+C once to stop gracefully, twice to abort in-flight requests.
@@ -210,12 +210,12 @@ While it runs you see a line every 2 seconds. Press Ctrl+C once to stop graceful
 For a non-local target:
 
 ```bash
-phoenix run scenario.json --allow-host staging.example.com --yes
+loadmeter run scenario.json --allow-host staging.example.com --yes
 ```
 
 `--allow-host` allows the host for this command only. `--yes` confirms a high-impact test (see the policy field `requireConfirmAbove`).
 
-Exit codes of `phoenix run`: `0` success, `3` when at least one SLA failed, `1` for other errors.
+Exit codes of `loadmeter run`: `0` success, `3` when at least one SLA failed, `1` for other errors.
 
 ## 10. Read the report
 
@@ -239,8 +239,8 @@ The terminal summary and the report show:
 List runs and re-create a report:
 
 ```bash
-phoenix runs
-phoenix report <run-id>
+loadmeter runs
+loadmeter report <run-id>
 ```
 
 How to read it:
@@ -257,60 +257,60 @@ In **Results**, tick exactly two runs and click **Compare selected**. The older 
 CLI:
 
 ```bash
-phoenix compare <baseline-run-id> <run-id>
+loadmeter compare <baseline-run-id> <run-id>
 ```
 
-Phoenix prints each metric (p50, p95, p99, error rate, rps) for the whole run and for each transaction, with the percent change. A latency regression is more than 10 % and more than 5 ms worse. An error regression is a rise of 1 percentage point or more. The command exits with code 3 if any regression is found.
+Load Meter prints each metric (p50, p95, p99, error rate, rps) for the whole run and for each transaction, with the percent change. A latency regression is more than 10 % and more than 5 ms worse. An error regression is a rise of 1 percentage point or more. The command exits with code 3 if any regression is found.
 
-You can also add a baseline when you run: `phoenix run scenario.json --baseline <run-id>`, or when re-rendering: `phoenix report <run-id> --baseline <other-run-id>`.
+You can also add a baseline when you run: `loadmeter run scenario.json --baseline <run-id>`, or when re-rendering: `loadmeter report <run-id> --baseline <other-run-id>`.
 
 ## 12. Export to JMeter
 
 ```bash
-phoenix export-jmx scenario.json -o plan.jmx
+loadmeter export-jmx scenario.json -o plan.jmx
 ```
 
-Phoenix prints a compatibility report listing what could not be preserved. The scenario must be in the workspace.
+Load Meter prints a compatibility report listing what could not be preserved. The scenario must be in the workspace.
 
 ## 13. AI help (optional)
 
 AI is off by default. See [AI_AND_MCP.md](AI_AND_MCP.md). Examples:
 
 ```bash
-phoenix ask "validate shop-login.json" --file shop-login.json
-phoenix explain <run-id>
+loadmeter ask "validate shop-login.json" --file shop-login.json
+loadmeter explain <run-id>
 ```
 
 ## CLI cheat sheet
 
 | Task | Command |
 |---|---|
-| Check install | `phoenix doctor` |
-| Make a workspace with the sample | `phoenix init` |
-| Start a mock target on 127.0.0.1:8099 | `phoenix mock` |
-| One-click demo | `phoenix demo` |
-| UI | `phoenix serve --open` |
-| Record plain HTTP | `phoenix record --out rec.har` |
-| Import | `phoenix import-har f.har`, `phoenix import-jmx f.jmx`, `phoenix import-lr ./dir` |
-| Correlate | `phoenix correlate s.json --apply all` |
-| Parameterize | `phoenix parameterize s.json --apply all --rows 100` |
-| Validate | `phoenix validate s.json` |
-| Run | `phoenix run s.json --vus 50 --duration 5m --ramp-up 1m` |
-| List runs | `phoenix runs` |
-| Report | `phoenix report <run-id>` |
-| Compare | `phoenix compare <base-id> <run-id>` |
-| Export | `phoenix export-jmx s.json -o plan.jmx` |
+| Check install | `loadmeter doctor` |
+| Make a workspace with the sample | `loadmeter init` |
+| Start a mock target on 127.0.0.1:8099 | `loadmeter mock` |
+| One-click demo | `loadmeter demo` |
+| UI | `loadmeter serve --open` |
+| Record plain HTTP | `loadmeter record --out rec.har` |
+| Import | `loadmeter import-har f.har`, `loadmeter import-jmx f.jmx`, `loadmeter import-lr ./dir` |
+| Correlate | `loadmeter correlate s.json --apply all` |
+| Parameterize | `loadmeter parameterize s.json --apply all --rows 100` |
+| Validate | `loadmeter validate s.json` |
+| Run | `loadmeter run s.json --vus 50 --duration 5m --ramp-up 1m` |
+| List runs | `loadmeter runs` |
+| Report | `loadmeter report <run-id>` |
+| Compare | `loadmeter compare <base-id> <run-id>` |
+| Export | `loadmeter export-jmx s.json -o plan.jmx` |
 
-Global option: `--workspace DIR` (default `./phoenix-workspace`, or `$PHOENIX_WORKSPACE`).
+Global option: `--workspace DIR` (default `./loadmeter-workspace`, or `$LOADMETER_WORKSPACE`).
 
 ## Try the whole flow locally
 
 ```bash
-phoenix init
-phoenix mock &                       # mock shop on 127.0.0.1:8099
-phoenix validate phoenix-workspace/scenarios/shop-login.json
-phoenix run phoenix-workspace/scenarios/shop-login.json --vus 5 --duration 10s --ramp-up 3s
-phoenix runs
+loadmeter init
+loadmeter mock &                       # mock shop on 127.0.0.1:8099
+loadmeter validate loadmeter-workspace/scenarios/shop-login.json
+loadmeter run loadmeter-workspace/scenarios/shop-login.json --vus 5 --duration 10s --ramp-up 3s
+loadmeter runs
 ```
 
 Stop the mock server afterwards (`kill %1`).
@@ -323,8 +323,8 @@ Stop the mock server afterwards (`kill %1`).
 | `workload needs N VUs but the safety policy allows M` | Lower the users, or raise `maxVUs` in `policy.json` if authorized. |
 | `ramp-up must be shorter than the duration` | Use a shorter ramp-up or a longer duration. |
 | Many errors right after login | A value probably needs correlation. Run **Debug** (UI) and look at the failing request. |
-| UI says 403 / token error | Open the full URL printed by `phoenix serve`, including `?token=`. |
-| `cannot listen on 127.0.0.1:7878` | Another Phoenix is running. Use `--addr 127.0.0.1:0` to pick a free port. |
+| UI says 403 / token error | Open the full URL printed by `loadmeter serve`, including `?token=`. |
+| `cannot listen on 127.0.0.1:7878` | Another Load Meter is running. Use `--addr 127.0.0.1:0` to pick a free port. |
 | Low open-file limit warning in `doctor` | Run `ulimit -n 65535` before large tests. |
 
 ## Converting between formats
@@ -332,7 +332,7 @@ Stop the mock server afterwards (`kill %1`).
 ### Import an OpenAPI spec
 
 ```
-phoenix import-openapi spec.json [--name N] [--tags a,b] [--exclude-tags x]
+loadmeter import-openapi spec.json [--name N] [--tags a,b] [--exclude-tags x]
     [--operations opId1,opId2] [--group-by tag|path]
     [--include-deprecated] [--include-destructive] [--json]
 ```
@@ -343,7 +343,7 @@ Reads an OpenAPI 3.0/3.1 **JSON** document (max 20 MB; convert YAML first, for e
 - Path parameters become `${param}` variables seeded from examples.
 - JSON bodies are built from examples or schemas (uuid, date-time and email formats become dynamic functions).
 - The status assertion comes from the first 2xx response; `servers[0].url` becomes the `baseUrl` variable.
-- Security schemes become headers with `${secret_*}` placeholders. Set them before running, for example with `${__env(PHOENIX_TOKEN)}`.
+- Security schemes become headers with `${secret_*}` placeholders. Set them before running, for example with `${__env(LOADMETER_TOKEN)}`.
 - Deprecated and DELETE operations are skipped unless you include them.
 - Only local `#/` references are resolved; cyclic references are truncated and reported.
 
@@ -352,26 +352,26 @@ MCP tool: `import_openapi`.
 ### Export to k6
 
 ```
-phoenix export-k6 scenario.json [-o out.js]
+loadmeter export-k6 scenario.json [-o out.js]
 ```
 
 Writes a self-contained k6 script (no remote imports) with executors, thresholds from SLAs, extractors, checks and CSV data. The compatibility report lists anything k6 cannot express. Run it with `k6 run out.js`, keeping CSV files at the path the script opens. k6 does not apply this tool's host allowlist, so only test systems you are authorized to test. MCP tool: `export_k6`.
 
 ## Distributed testing
 
-One machine is not always enough. Phoenix can split a test across several load agents running the same binary: no RMI, no extra ports, no Java.
+One machine is not always enough. Load Meter can split a test across several load agents running the same binary: no RMI, no extra ports, no Java.
 
 **1. Start an agent on each load machine**
 
-    phoenix agent --token-file ~/.phoenix/agent.token [--listen 0.0.0.0:7979] [--allow-host api.test.example]
+    loadmeter agent --token-file ~/.loadmeter/agent.token [--listen 0.0.0.0:7979] [--allow-host api.test.example]
 
-- The first start creates a random token file (0600) and a self-signed TLS certificate in `~/.phoenix/agent/`, and prints the certificate's SHA-256 fingerprint plus a ready-to-copy controller command. `phoenix agent --fingerprint` prints it again.
+- The first start creates a random token file (0600) and a self-signed TLS certificate in `~/.loadmeter/agent/`, and prints the certificate's SHA-256 fingerprint plus a ready-to-copy controller command. `loadmeter agent --fingerprint` prints it again.
 - The agent refuses to start without a token. Agents are the only component meant to listen on non-loopback addresses; all traffic is HTTPS with the token.
 - Each agent enforces its **own** safety policy (its `policy.json` and `--allow-host`). The controller cannot widen it.
 
 **2. Copy the token file to the controller**, then run:
 
-    phoenix run scenario.json --vus 300 --duration 10m \
+    loadmeter run scenario.json --vus 300 --duration 10m \
       --agents 10.0.0.11:7979#<fingerprint>,10.0.0.12:7979#<fingerprint> \
       --agent-token-file ./agent.token [--local-share 0.2]
 

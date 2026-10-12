@@ -2,9 +2,9 @@
 
 All evidence IDs refer to SOURCE_REGISTER.md. Evidence of "user problem" is a mix of direct feedback and our inference; the backlog states which. Complexity: S/M/L = engineering effort order of magnitude. Priority P0 = must ship in first usable release.
 
-## 1. Gaps Phoenix can address (analysis)
+## 1. Gaps Load Meter can address (analysis)
 
-| # | Gap | Evidence | Phoenix angle |
+| # | Gap | Evidence | Load Meter angle |
 |---|---|---|---|
 | G1 | Correlation is manual in JMeter and HAR-to-k6; automatic only in commercial tools or k6 Studio rules | S019, S046, S030, S023, S041 | Deterministic candidate detection + replay-based proof + LLM only for ranking/explanation |
 | G2 | Silent correlation failure (script "looks right", hardcoded tokens) | S047, S011 | Mandatory validation run that proves the value was extracted and changed |
@@ -27,7 +27,7 @@ Security column describes implications of building the feature. "Dependencies" u
 
 | ID | Feature | Evidence | User problem | Complexity | Dependencies | Security implications | Acceptance criteria | Priority |
 |---|---|---|---|---|---|---|---|---|
-| F001 | Single static Go binary (Linux/macOS/Windows), embedded web UI assets, zero runtime deps | S015, S017, S048, S045 | Heavy installs (JVM, Windows-only authoring, Python+build tools) | M | none | Signed releases, checksums, reproducible build | Download one file, run `phoenix ui`, first test runs with no other installs on a clean VM of each OS | P0 |
+| F001 | Single static Go binary (Linux/macOS/Windows), embedded web UI assets, zero runtime deps | S015, S017, S048, S045 | Heavy installs (JVM, Windows-only authoring, Python+build tools) | M | none | Signed releases, checksums, reproducible build | Download one file, run `loadmeter ui`, first test runs with no other installs on a clean VM of each OS | P0 |
 | F002 | HTTP/HTTPS/HTTP2 load engine (virtual users, ramp, think time, keep-alive, cookies, redirects) | S018, S020, S044 | Core capability; JMeter/Locust CPU limits | L | F001 | TLS verification on by default; explicit opt-out per test | Runs scripted flow at N VUs; documented throughput on reference hardware; no GC-induced timing drift above stated threshold | P0 |
 | F003 | Open-model (arrival-rate) and closed-model scheduling with coordinated-omission warning | S018, S038, S039, S010 | Misleading latencies when target slows | M | F002 | none beyond DoS-limit guard (F012) | Test with injected slow server shows arrival rate maintained in open mode; UI warns in closed mode | P0 |
 | F004 | HAR import to editable scenario (filter third-party domains/static assets) | S046, S019, S023 | Manual filtering/cleanup; HAR is the open interchange format | M | F002 | HAR contains secrets (cookies, auth); redact/scrub on import, warn on save | Import real HAR; third-party hosts listed and excludable; secrets masked in UI and exports | P0 |
@@ -37,7 +37,7 @@ Security column describes implications of building the feature. "Dependencies" u
 | F008 | CSV (and JSON) parameterization: per-VU, shared, sequential/random/unique policies, end-of-data behaviour | S018, S023 | Per-user data; data files not shipped to distributed nodes (JMeter) | M | F002 | Credentials in data files: mask in logs, optional encryption at rest | Unique-per-VU policy verified under concurrency; exhausted data stops or loops per setting | P0 |
 | F009 | Live metrics dashboard (streaming) with correct percentiles (documented estimator, mergeable sketch such as HDR/t-digest) | S035, S008, S017, S036 | Percentile disagreement, no live graphs | M | F002 | Local-only bind by default | Percentiles match offline exact calculation within stated error on reference datasets; identical numbers live vs final report | P0 |
 | F010 | Self-contained HTML report (offline, single file) incl. percentiles, error table, throughput, APDEX-like score | S035, S017, S015 | Reporting gaps; JMeter dashboard gotchas | M | F009 | Report may contain URLs/headers; redaction profile | Report opens offline; numbers equal F009 final; secrets masked | P0 |
-| F011 | Machine-readable results (JSON/CSV) and exit codes with thresholds | S036, S028 | CI gating and downstream analysis | S | F009 | none | `phoenix run --thresholds` returns non-zero on breach; schema documented | P1 |
+| F011 | Machine-readable results (JSON/CSV) and exit codes with thresholds | S036, S028 | CI gating and downstream analysis | S | F009 | none | `loadmeter run --thresholds` returns non-zero on breach; schema documented | P1 |
 | F012 | Safety allowlist: tests only target explicitly allowed hosts/CIDRs; rate and VU caps; confirm-before-run for non-local | S018 (BeanShell control-port risk), inference | Accidental load on third parties/production | M | F002 | Core control; enforced in engine not only UI; includes redirect and DNS-rebinding handling | Request to non-allowlisted host (including via redirect) is blocked and logged; cannot be disabled via MCP/AI | P0 |
 | F013 | MCP server exposing test lifecycle (import, suggest, validate, run, read results) with allowlist and approval gates | S004, S027, S033, S034 | AI-assisted workflows; existing MCP servers only run a JMX | M | F002, F012 | Auth on transport; destructive/running actions require explicit approval; audit log | MCP client can complete import->correlate->validate->run; run action blocked without approval; all calls logged | P0 |
 | F014 | Local model support (Ollama/llama.cpp-compatible endpoint); no mandatory cloud | S040, S024, S034 | Vendor-cloud-bound AI; data leakage concerns | M | F013 | Default no outbound calls; redaction of tokens/PII before any model prompt | Feature works with offline model; network trace shows no external calls in local mode | P0 |
@@ -63,5 +63,5 @@ Security column describes implications of building the feature. "Dependencies" u
 
 ## 3. Notes
 - P0 coverage per brief: single-binary install F001; HTTP engine F002; HAR import F004; JMX import with compat report F005; correlation suggestions F006 with validation F007; CSV parameterization F008; live metrics with correct percentiles F009; HTML report F010; safety allowlist F012; MCP/AI control F013; local model support F014. F003 is added as P0 because open-model correctness underpins "correct" latency.
-- Competitive caution: k6 Studio already offers record, rules and validator; Phoenix differentiation must be detection quality, replay proof, single-binary web UI, JMX migration and local-model AI, not "has a recorder" [S023, S049].
+- Competitive caution: k6 Studio already offers record, rules and validator; Load Meter differentiation must be detection quality, replay proof, single-binary web UI, JMX migration and local-model AI, not "has a recorder" [S023, S049].
 - Evidence strength warning: Reddit/Stack Overflow were not accessible; priorities rely on review sites, vendor docs and blogs.

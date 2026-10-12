@@ -7,14 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lelanga/phoenix/internal/app"
-	"github.com/lelanga/phoenix/internal/k6"
-	"github.com/lelanga/phoenix/internal/openapi"
+	"github.com/lelanga/loadmeter/internal/app"
+	"github.com/lelanga/loadmeter/internal/k6"
+	"github.com/lelanga/loadmeter/internal/openapi"
 )
 
 func init() {
-	register("import-openapi", "Import an OpenAPI 3.x JSON spec: phoenix import-openapi spec.json [--name N --tags a,b --exclude-tags x --operations id1,id2 --group-by tag|path --include-deprecated --include-destructive --json]", cmdImportOpenAPI)
-	register("export-k6", "Export a scenario to a k6 script: phoenix export-k6 scenario.json [-o out.js]", cmdExportK6)
+	register("import-openapi", "Import an OpenAPI 3.x JSON spec: loadmeter import-openapi spec.json [--name N --tags a,b --exclude-tags x --operations id1,id2 --group-by tag|path --include-deprecated --include-destructive --json]", cmdImportOpenAPI)
+	register("export-k6", "Export a scenario to a k6 script: loadmeter export-k6 scenario.json [-o out.js]", cmdExportK6)
 }
 
 func cmdImportOpenAPI(args []string) error {
@@ -33,7 +33,7 @@ func cmdImportOpenAPI(args []string) error {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: phoenix import-openapi spec.json")
+		return fmt.Errorf("usage: loadmeter import-openapi spec.json")
 	}
 	b, err := os.ReadFile(fs.Arg(0))
 	if err != nil {
@@ -68,7 +68,7 @@ func cmdExportK6(args []string) error {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: phoenix export-k6 scenario.json [-o out.js]")
+		return fmt.Errorf("usage: loadmeter export-k6 scenario.json [-o out.js]")
 	}
 	arg := fs.Arg(0)
 	if *out == "" {

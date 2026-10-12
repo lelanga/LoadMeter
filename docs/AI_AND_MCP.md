@@ -1,9 +1,9 @@
 # AI providers and the MCP server
 
-Phoenix works fully without AI. AI is optional and **off by default**. You can use it in two ways:
+Load Meter works fully without AI. AI is optional and **off by default**. You can use it in two ways:
 
-1. Phoenix calls an AI provider for you (`phoenix ask`, `phoenix explain`, the UI's AI Assistant).
-2. An AI assistant (Claude, Gemini CLI, Cursor, VS Code, ...) calls Phoenix through the MCP server (`phoenix mcp`).
+1. Load Meter calls an AI provider for you (`loadmeter ask`, `loadmeter explain`, the UI's AI Assistant).
+2. An AI assistant (Claude, Gemini CLI, Cursor, VS Code, ...) calls Load Meter through the MCP server (`loadmeter mcp`).
 
 Either way, the AI goes through the same tools, validation and safety gates as the UI. It cannot test a host that is not allowlisted. See [SECURITY.md](SECURITY.md).
 
@@ -21,7 +21,7 @@ Either way, the AI goes through the same tools, validation and safety gates as t
 
 A provider counts as **local** when it is `mock`, or when its base URL points to a loopback address. Everything else is cloud.
 
-The settings live in `ai.json` in the config directory (`~/.phoenix` or `$PHOENIX_HOME`). You can edit it by hand or use the UI (Settings) or `phoenix ai`. Fields:
+The settings live in `ai.json` in the config directory (`~/.loadmeter` or `$LOADMETER_HOME`). You can edit it by hand or use the UI (Settings) or `loadmeter ai`. Fields:
 
 | Field | Meaning |
 |---|---|
@@ -34,29 +34,29 @@ The settings live in `ai.json` in the config directory (`~/.phoenix` or `$PHOENI
 
 ### Routing
 
-Phoenix sorts AI tasks into two tiers. The **strong** tier is used for `convert`, `correlate`, `root-cause`, `plan`, `report` and `scenario-generation`. Everything else is **light**. `routing.strong` and `routing.light` name which provider handles each tier. If the first provider fails, Phoenix tries the other tier's provider. Temporary errors (HTTP 429 and 5xx) are retried up to 3 times with backoff.
+Load Meter sorts AI tasks into two tiers. The **strong** tier is used for `convert`, `correlate`, `root-cause`, `plan`, `report` and `scenario-generation`. Everything else is **light**. `routing.strong` and `routing.light` name which provider handles each tier. If the first provider fails, Load Meter tries the other tier's provider. Temporary errors (HTTP 429 and 5xx) are retried up to 3 times with backoff.
 
 The default routing is `ollama` for both tiers, so nothing leaves your machine until you change it.
 
-## `phoenix ai` commands
+## `loadmeter ai` commands
 
 ```text
-phoenix ai status
-phoenix ai enable <light-provider-id> <strong-provider-id> [--cloud-consent]
-phoenix ai disable
-phoenix ai set-key <provider-id>
-phoenix ai test <provider-id>
+loadmeter ai status
+loadmeter ai enable <light-provider-id> <strong-provider-id> [--cloud-consent]
+loadmeter ai disable
+loadmeter ai set-key <provider-id>
+loadmeter ai test <provider-id>
 ```
 
 | Command | What it does |
 |---|---|
-| `phoenix ai` or `phoenix ai status` | Shows `enabled`, `cloudConsent`, `localOnly`, the routing, the key storage backend, and one line per provider (kind, model, local, key present) |
-| `phoenix ai enable L S` | Turns AI on and routes light tasks to provider `L` and strong tasks to provider `S`. Add `--cloud-consent` to allow cloud providers. Both ids must exist |
-| `phoenix ai disable` | Turns AI off |
-| `phoenix ai set-key ID` | Prompts for the key on stdin and stores it (Keychain, Secret Service, or a 0600 file). An environment variable still takes precedence |
-| `phoenix ai test ID` | Sends one tiny prompt to that provider and prints the reply and latency. It respects consent and local-only |
+| `loadmeter ai` or `loadmeter ai status` | Shows `enabled`, `cloudConsent`, `localOnly`, the routing, the key storage backend, and one line per provider (kind, model, local, key present) |
+| `loadmeter ai enable L S` | Turns AI on and routes light tasks to provider `L` and strong tasks to provider `S`. Add `--cloud-consent` to allow cloud providers. Both ids must exist |
+| `loadmeter ai disable` | Turns AI off |
+| `loadmeter ai set-key ID` | Prompts for the key on stdin and stores it (Keychain, Secret Service, or a 0600 file). An environment variable still takes precedence |
+| `loadmeter ai test ID` | Sends one tiny prompt to that provider and prints the reply and latency. It respects consent and local-only |
 
-`phoenix ai -h` does not print help. It reports `unknown ai subcommand "-h"`. Use `phoenix --help` for the one-line summary.
+`loadmeter ai -h` does not print help. It reports `unknown ai subcommand "-h"`. Use `loadmeter --help` for the one-line summary.
 
 ### Examples
 
@@ -64,26 +64,26 @@ Local only, with Ollama:
 
 ```bash
 ollama serve &                     # your own Ollama install
-phoenix ai enable ollama ollama
-phoenix ai test ollama
+loadmeter ai enable ollama ollama
+loadmeter ai test ollama
 ```
 
 Cloud, with consent and a key from the environment:
 
 ```bash
 export ANTHROPIC_API_KEY=...      # your own key
-phoenix ai enable anthropic anthropic-strong --cloud-consent
-phoenix ai test anthropic
+loadmeter ai enable anthropic anthropic-strong --cloud-consent
+loadmeter ai test anthropic
 ```
 
 ## What is sent to the AI, and consent
 
-Before any text leaves Phoenix, secrets in it are masked and e-mail addresses become `[EMAIL]` (see [SECURITY.md](SECURITY.md#6-redaction)). This also applies to local models.
+Before any text leaves Load Meter, secrets in it are masked and e-mail addresses become `[EMAIL]` (see [SECURITY.md](SECURITY.md#6-redaction)). This also applies to local models.
 
 | Feature | Sent to the provider |
 |---|---|
-| `phoenix ask` / UI assistant | Your request text, the tool list, scenario file names and titles, the 5 newest run ids, and the name of the open scenario. Not request bodies or response bodies |
-| `phoenix explain <run-id>` | The run's aggregated summary (percentiles, per-transaction numbers, SLA results, findings), redacted. The command prints how many bytes were sent |
+| `loadmeter ask` / UI assistant | Your request text, the tool list, scenario file names and titles, the 5 newest run ids, and the name of the open scenario. Not request bodies or response bodies |
+| `loadmeter explain <run-id>` | The run's aggregated summary (percentiles, per-transaction numbers, SLA results, findings), redacted. The command prints how many bytes were sent |
 
 Rules:
 
@@ -93,18 +93,18 @@ Rules:
 - Every call is recorded in `ai-activity.jsonl` and the audit log.
 - Imported files, responses and logs are sent inside `<untrusted_data>` tags, and the model is told to treat them as data.
 
-## Natural language: `phoenix ask`
+## Natural language: `loadmeter ask`
 
 ```bash
-phoenix ask "create a 100-user 10-minute test with ramp-up" --file shop-login.json
-phoenix ask "find dynamic tokens and suggest correlation rules" --file shop-login.json
-phoenix ask "validate shop-login.json" --file shop-login.json
+loadmeter ask "create a 100-user 10-minute test with ramp-up" --file shop-login.json
+loadmeter ask "find dynamic tokens and suggest correlation rules" --file shop-login.json
+loadmeter ask "validate shop-login.json" --file shop-login.json
 ```
 
 `ask` builds a plan, a list of tool calls, and runs it. Output shows the planner (`ai` or `rules`), each step, and each result.
 
 - With AI **disabled**, a built-in rule planner handles common requests (import a path ending in `.har` or `.jmx`, correlate, parameterize, set workload, validate, debug, run, compare, export). It works offline.
-- With AI **enabled**, the AI proposes the plan. If the AI fails or its answer cannot be parsed, Phoenix falls back to the rules.
+- With AI **enabled**, the AI proposes the plan. If the AI fails or its answer cannot be parsed, Load Meter falls back to the rules.
 - Steps that generate load or delete data (`run_test`, `delete_scenario`) run only when you pass `--confirm`. Without it they are listed as `[needs --confirm]`.
 - Other steps run immediately. That includes `set_workload`, which saves a change to the scenario file. A copy of the old version is kept in the workspace history.
 
@@ -113,34 +113,34 @@ Flags: `--file` (the scenario the request refers to), `--confirm`, `--workspace`
 Explain a run:
 
 ```bash
-phoenix explain <run-id>
+loadmeter explain <run-id>
 ```
 
-## MCP server: `phoenix mcp`
+## MCP server: `loadmeter mcp`
 
-`phoenix mcp` speaks the Model Context Protocol over **stdio**. The AI client starts it as a child process. It prints one line on stderr, then waits for JSON-RPC on stdin.
+`loadmeter mcp` speaks the Model Context Protocol over **stdio**. The AI client starts it as a child process. It prints one line on stderr, then waits for JSON-RPC on stdin.
 
 ```bash
-phoenix mcp --workspace /absolute/path/to/workspace
+loadmeter mcp --workspace /absolute/path/to/workspace
 ```
 
-Use an **absolute** path for the binary and the workspace. Phoenix resolves relative paths against the working directory of the client, which is often not what you expect.
+Use an **absolute** path for the binary and the workspace. Load Meter resolves relative paths against the working directory of the client, which is often not what you expect.
 
-Protocol versions answered: 2026-07-28, 2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05. Phoenix offers tools only (no resources or prompts).
+Protocol versions answered: 2026-07-28, 2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05. Load Meter offers tools only (no resources or prompts).
 
-The server does not use the AI providers above. The AI client brings its own model. Hosts that Phoenix may test follow your `policy.json` (loopback always allowed). The MCP server has no `--allow-host` flag. Add hosts to `policy.json` or the UI before you ask an assistant to test them.
+The server does not use the AI providers above. The AI client brings its own model. Hosts that Load Meter may test follow your `policy.json` (loopback always allowed). The MCP server has no `--allow-host` flag. Add hosts to `policy.json` or the UI before you ask an assistant to test them.
 
 ### Client configuration
 
-Replace `/path/to/phoenix` and `/path/to/workspace` with real absolute paths.
+Replace `/path/to/loadmeter` and `/path/to/workspace` with real absolute paths.
 
 **Claude Desktop** (`claude_desktop_config.json`):
 
 ```json
 {
   "mcpServers": {
-    "phoenix": {
-      "command": "/path/to/phoenix",
+    "loadmeter": {
+      "command": "/path/to/loadmeter",
       "args": ["mcp", "--workspace", "/path/to/workspace"]
     }
   }
@@ -150,7 +150,7 @@ Replace `/path/to/phoenix` and `/path/to/workspace` with real absolute paths.
 **Claude Code**:
 
 ```bash
-claude mcp add phoenix -- /path/to/phoenix mcp --workspace /path/to/workspace
+claude mcp add loadmeter -- /path/to/loadmeter mcp --workspace /path/to/workspace
 ```
 
 **Gemini CLI** (`~/.gemini/settings.json`):
@@ -158,8 +158,8 @@ claude mcp add phoenix -- /path/to/phoenix mcp --workspace /path/to/workspace
 ```json
 {
   "mcpServers": {
-    "phoenix": {
-      "command": "/path/to/phoenix",
+    "loadmeter": {
+      "command": "/path/to/loadmeter",
       "args": ["mcp", "--workspace", "/path/to/workspace"]
     }
   }
@@ -171,8 +171,8 @@ claude mcp add phoenix -- /path/to/phoenix mcp --workspace /path/to/workspace
 ```json
 {
   "mcpServers": {
-    "phoenix": {
-      "command": "/path/to/phoenix",
+    "loadmeter": {
+      "command": "/path/to/loadmeter",
       "args": ["mcp", "--workspace", "/path/to/workspace"]
     }
   }
@@ -184,16 +184,16 @@ claude mcp add phoenix -- /path/to/phoenix mcp --workspace /path/to/workspace
 ```json
 {
   "servers": {
-    "phoenix": {
+    "loadmeter": {
       "type": "stdio",
-      "command": "/path/to/phoenix",
+      "command": "/path/to/loadmeter",
       "args": ["mcp", "--workspace", "/path/to/workspace"]
     }
   }
 }
 ```
 
-Restart the client after you edit its config. Then ask: "List my Phoenix scenarios."
+Restart the client after you edit its config. Then ask: "List my Load Meter scenarios."
 
 ### Tools
 
@@ -233,19 +233,19 @@ Only `run_test` and `delete_scenario` need confirmation. Tools with `readOnlyHin
 ```bash
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
               '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
-  | phoenix mcp --workspace /tmp/phoenix-ws
+  | loadmeter mcp --workspace /tmp/loadmeter-ws
 ```
 
 ### Resources, prompts and progress
 
-Besides tools, `phoenix mcp` serves MCP resources and prompts.
+Besides tools, `loadmeter mcp` serves MCP resources and prompts.
 
 Resources (read-only, no confirmation needed; templates via `resources/templates/list`):
 
-- `phoenix://scenarios/{file}`: scenario JSON, for example `phoenix://scenarios/shop-login.json`.
-- `phoenix://runs/{runId}/summary`: run summary JSON.
-- `phoenix://runs/{runId}/report`: the HTML report (`text/html`).
-- `phoenix://docs/scenario-format`: the scenario format reference, built into the binary.
+- `loadmeter://scenarios/{file}`: scenario JSON, for example `loadmeter://scenarios/shop-login.json`.
+- `loadmeter://runs/{runId}/summary`: run summary JSON.
+- `loadmeter://runs/{runId}/report`: the HTML report (`text/html`).
+- `loadmeter://docs/scenario-format`: the scenario format reference, built into the binary.
 
 Ids are validated and path traversal is rejected.
 
@@ -262,7 +262,7 @@ Each prompt reminds the AI that `run_test` needs your explicit confirmation and 
 
 ### HTTP transport
 
-`phoenix mcp --http 127.0.0.1:7880 [--workspace DIR]` serves Streamable HTTP at `POST /mcp`.
+`loadmeter mcp --http 127.0.0.1:7880 [--workspace DIR]` serves Streamable HTTP at `POST /mcp`.
 
 - Loopback only.
 - A bearer token is generated into `<config dir>/mcp-token` (0600) and printed at startup. Send `Authorization: Bearer <token>`.
@@ -274,8 +274,8 @@ Each prompt reminds the AI that `run_test` needs your explicit confirmation and 
 ### One-command client setup
 
 ```
-phoenix mcp install --client claude-desktop|claude-code|cursor|vscode|gemini|windsurf [--workspace DIR] [--project DIR] [--dry-run]
-phoenix mcp uninstall --client <same list>
+loadmeter mcp install --client claude-desktop|claude-code|cursor|vscode|gemini|windsurf [--workspace DIR] [--project DIR] [--dry-run]
+loadmeter mcp uninstall --client <same list>
 ```
 
 | Client | File | Key |
@@ -285,10 +285,10 @@ phoenix mcp uninstall --client <same list>
 | VS Code | user-level `mcp.json` in the VS Code user folder, or `<DIR>/.vscode/mcp.json` with `--project DIR` | `servers` (`"type":"stdio"`) |
 | Gemini CLI | `~/.gemini/settings.json` | `mcpServers` |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` |
-| Claude Code | no file: runs `claude mcp add phoenix -- <abs phoenix> mcp --workspace <abs>` if `claude` is on PATH (prints it otherwise or with `--dry-run`) | n/a |
+| Claude Code | no file: runs `claude mcp add loadmeter -- <abs loadmeter> mcp --workspace <abs>` if `claude` is on PATH (prints it otherwise or with `--dry-run`) | n/a |
 
-The entry uses the absolute path of the running binary. Install merges into the existing JSON, keeps every other server and key, and saves the original as `<file>.bak` first. A file that is not plain JSON (for example with comments) is left untouched. `uninstall` removes only the `phoenix` entry. Restart the client afterwards.
+The entry uses the absolute path of the running binary. Install merges into the existing JSON, keeps every other server and key, and saves the original as `<file>.bak` first. A file that is not plain JSON (for example with comments) is left untouched. `uninstall` removes only the `loadmeter` entry. Restart the client afterwards.
 
 ## UI AI Assistant
 
-The **AI Assistant** page in the UI is the same planner as `phoenix ask`. It shows the plan, asks for confirmation before steps that generate load, and shows recent AI activity. AI settings are in **Settings**.
+The **AI Assistant** page in the UI is the same planner as `loadmeter ask`. It shows the plan, asks for confirmation before steps that generate load, and shows recent AI activity. AI settings are in **Settings**.

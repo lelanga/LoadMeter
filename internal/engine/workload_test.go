@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 func TestConstantVUs(t *testing.T) {

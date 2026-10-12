@@ -6,13 +6,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lelanga/phoenix/internal/app"
-	"github.com/lelanga/phoenix/internal/service"
+	"github.com/lelanga/loadmeter/internal/app"
+	"github.com/lelanga/loadmeter/internal/service"
 )
 
 func newTestServer(t *testing.T) (*Server, http.Handler) {
 	t.Helper()
-	t.Setenv("PHOENIX_HOME", t.TempDir())
+	t.Setenv("LOADMETER_HOME", t.TempDir())
 	svc, err := service.New(app.Workspace{Dir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +35,7 @@ func do(h http.Handler, method, target string, hdr map[string]string) *httptest.
 
 func TestAuthAndCSRF(t *testing.T) {
 	s, h := newTestServer(t)
-	cookie := "phoenix_session=" + s.Token
+	cookie := "loadmeter_session=" + s.Token
 
 	if w := do(h, "GET", "/api/scenarios", nil); w.Code != http.StatusUnauthorized {
 		t.Fatalf("no token: got %d", w.Code)
@@ -62,7 +62,7 @@ func TestRejectsForeignHost(t *testing.T) {
 	s, h := newTestServer(t)
 	r := httptest.NewRequest("GET", "/api/scenarios", nil)
 	r.Host = "evil.example:7878"
-	r.Header.Set("Cookie", "phoenix_session="+s.Token)
+	r.Header.Set("Cookie", "loadmeter_session="+s.Token)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	if w.Code == http.StatusOK {

@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/redact"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/redact"
 )
 
 type Use struct {

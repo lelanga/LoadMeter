@@ -3,7 +3,7 @@
 | # | Decision | Why |
 |---|---|---|
 | 1 | Go, standard library only, single static binary with the UI embedded | Plug-and-play install like JMeter, no JVM, tiny SBOM, easy cross-compile |
-| 2 | Canonical JSON IR `phoenix/v1`; all importers/exporters convert to/from it | One engine, many formats; every conversion produces a compatibility report |
+| 2 | Canonical JSON IR `loadmeter/v1`; all importers/exporters convert to/from it | One engine, many formats; every conversion produces a compatibility report |
 | 3 | Log-linear histogram (7 sub-bucket bits, <0.8% relative error); percentiles always computed from merged histograms | Averaging percentiles is wrong; HDR-style buckets are cheap and mergeable |
 | 4 | Both closed (VU) and open (arrival-rate) executors, dropped iterations counted | Open model avoids coordinated omission; matches k6/LoadRunner goal-oriented usage |
 | 5 | Loopback-only targets by default; other hosts need an explicit allowlist; checked at dial time before DNS | Prevents accidental or abusive load against third parties, including via redirects |

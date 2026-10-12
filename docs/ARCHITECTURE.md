@@ -1,12 +1,12 @@
 # Architecture
 
-Phoenix is one Go program built from the standard library only. The CLI, the web UI, the HTTP API and the MCP server are thin front ends over the same core.
+Load Meter is one Go program built from the standard library only. The CLI, the web UI, the HTTP API and the MCP server are thin front ends over the same core.
 
 ## Package map
 
 | Path | Role |
 |---|---|
-| `cmd/phoenix` | The CLI. `main.go` has `run`, `validate`, `demo`, `mock`, `report`, `compare`, `runs`, `doctor`, `init`. `more.go` has `serve`, `mcp`, imports, `correlate`, `parameterize`, `record`, `ask`, `ai`, `explain`. Also OS-specific open-file-limit helpers |
+| `cmd/loadmeter` | The CLI. `main.go` has `run`, `validate`, `demo`, `mock`, `report`, `compare`, `runs`, `doctor`, `init`. `more.go` has `serve`, `mcp`, imports, `correlate`, `parameterize`, `record`, `ask`, `ai`, `explain`. Also OS-specific open-file-limit helpers |
 | `web` | Embeds the static single-page UI (`web/static`: plain ES modules, no build step) with `go:embed`. See `web/UI_NOTES.md` |
 | `examples` | Embeds the sample scenario `shop-login.json` and `users.csv` |
 | `internal/model` | The scenario format (the intermediate representation, IR), its validation, and the compatibility report type |
@@ -41,7 +41,7 @@ Phoenix is one Go program built from the standard library only. The CLI, the web
 HAR / JMX / VuGen script / hand-written JSON
         |
         v   importers (har, jmx, loadrunner)
-   model.Scenario  (the IR; phoenix/v1 JSON on disk)
+   model.Scenario  (the IR; loadmeter/v1 JSON on disk)
         |
         v   correlate + param (review and apply; validated by replay)
    improved Scenario
@@ -71,7 +71,7 @@ The engine runs one goroutine per virtual user. It supports two families of exec
 
 ### Closed model (`constant-vus`, `ramping-vus`, `per-vu-iterations`)
 
-- Phoenix starts a pool of VU goroutines. For `ramping-vus` the pool size is the largest stage target.
+- Load Meter starts a pool of VU goroutines. For `ramping-vus` the pool size is the largest stage target.
 - VU number `i` is active only while `i` is at most the current target. The target is computed from the elapsed time by linear interpolation between stages. VUs above the target idle and poll every 50 ms.
 - Each active VU loops: run `setup` once, then iterations one after another, optionally paced by `workload.pacing`, until the duration ends. `teardown` runs when the VU finishes.
 - The VU waits for each response before it sends the next request. When the system slows down, the offered load falls with it. This is how real users with a fixed crowd behave.
@@ -103,7 +103,7 @@ Latency samples go into a **log-linear histogram** (the same idea as HDR Histogr
 - This gives a relative error below **0.8 %** for any recorded value.
 - Memory per histogram is fixed (64 x 128 counters). Recording a sample is one array increment.
 - Histograms **merge** by adding counters. Per-second windows, per-transaction and per-request totals, and the final run summary are all built by merging. A percentile is always read from the merged distribution.
-- **Percentiles are never averaged.** Averaging per-second p95 values gives a wrong answer. Phoenix reads p50, p90, p95 and p99 from the full distribution of all samples in scope.
+- **Percentiles are never averaged.** Averaging per-second p95 values gives a wrong answer. Load Meter reads p50, p90, p95 and p99 from the full distribution of all samples in scope.
 - The live dashboard and the final summary use the same code, so their numbers agree.
 - Quantiles use nearest-rank, clamped to the exact minimum and maximum seen.
 - Averages are computed from exact sums, not from the histogram.
@@ -115,7 +115,7 @@ Run comparison reads these full histograms for both runs. A latency regression i
 | Decision | Reason |
 |---|---|
 | One static binary, standard library only | Nothing to install or version-match. No third-party code to audit (see [SBOM.md](SBOM.md)) |
-| One IR (`phoenix/v1` JSON) for every importer, exporter and the engine | Each importer is only a translator. Human-readable and easy to diff |
+| One IR (`loadmeter/v1` JSON) for every importer, exporter and the engine | Each importer is only a translator. Human-readable and easy to diff |
 | One service layer for UI, CLI, MCP and assistant | The same validation and safety checks apply everywhere. No front end has extra powers |
 | Safety in the engine's dialer, not only in the UI | A check in one front end can be bypassed from another. The dialer sees every connection, including redirects |
 | Allowlist set by the operator, never by the scenario | Imported scenarios are untrusted input |

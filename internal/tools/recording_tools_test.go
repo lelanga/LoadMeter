@@ -6,12 +6,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/lelanga/phoenix/internal/app"
-	"github.com/lelanga/phoenix/internal/service"
+	"github.com/lelanga/loadmeter/internal/app"
+	"github.com/lelanga/loadmeter/internal/service"
 )
 
 func TestRecordingToolsConfirmAndLifecycle(t *testing.T) {
-	t.Setenv("PHOENIX_HOME", t.TempDir())
+	t.Setenv("LOADMETER_HOME", t.TempDir())
 	s, err := service.New(app.Workspace{Dir: filepath.Join(t.TempDir(), "ws")})
 	if err != nil {
 		t.Fatal(err)

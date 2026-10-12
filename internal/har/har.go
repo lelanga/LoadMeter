@@ -1,4 +1,4 @@
-// Package har imports HTTP Archive (HAR 1.2) captures into Phoenix scenarios.
+// Package har imports HTTP Archive (HAR 1.2) captures into Load Meter scenarios.
 package har
 
 import (
@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/correlate"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/redact"
+	"github.com/lelanga/loadmeter/internal/correlate"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/redact"
 )
 
 type nv struct {
@@ -258,7 +258,7 @@ func Import(r io.Reader, source string, o Options) (*model.Scenario, *model.Comp
 				}
 				if !credWarned[ln] {
 					credWarned[ln] = true
-					rep.Manual = append(rep.Manual, fmt.Sprintf("Header %s was recorded with a credential; it was replaced by ${%s}. Apply the correlation suggestion or set the variable (e.g. --set %s=... or ${__env(PHOENIX_...)}).", hd.Name, vn, vn))
+					rep.Manual = append(rep.Manual, fmt.Sprintf("Header %s was recorded with a credential; it was replaced by ${%s}. Apply the correlation suggestion or set the variable (e.g. --set %s=... or ${__env(LOADMETER_...)}).", hd.Name, vn, vn))
 				}
 				v = "${" + vn + "}"
 			}

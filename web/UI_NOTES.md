@@ -1,4 +1,4 @@
-# Phoenix web UI notes
+# Load Meter web UI notes
 
 Plain static files embedded with `//go:embed static` (`web.Static`). No build step, no npm, no external requests.
 ES2020 modules: `app.js` (router), `api.js`, `ui.js` (DOM helpers, dialogs, toasts, formatting), `charts.js` (canvas), `summary.js`, `inspector.js`,
@@ -21,8 +21,8 @@ Server must serve `static/` at `/` (so `/app.js`, `/style.css`, `/ui.js`... reso
 Not used by the UI (yet): scenario history/diff/restore, `/api/export/jmx/*`, `/api/ai/explain`, `/api/health`.
 
 ## Behaviour notes
-- Token: `GET /api/session` (cookie), then `X-Phoenix-Token` on every fetch. `?token=` is removed from the address bar after load.
-- Beginner/Advanced is `localStorage["phoenix.mode"]` (try/catch). Switching re-renders the current view; editor edits are kept in memory.
+- Token: `GET /api/session` (cookie), then `X-LoadMeter-Token` on every fetch. `?token=` is removed from the address bar after load.
+- Beginner/Advanced is `localStorage["loadmeter.mode"]` (try/catch). Switching re-renders the current view; editor edits are kept in memory.
 - Editor leaves with unsaved changes ask for confirmation. "Validate" and "Debug" save first when the editor is dirty (both act on the saved file).
 - 409 `needsConfirmation` shows a warning dialog and resends with `confirm:true`; 403 shows allowlist guidance linking to Settings.
 - Closed (VUs) vs open (rate) model explanation is on the Workload tab.

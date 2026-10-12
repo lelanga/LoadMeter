@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 const fixture = "../../testdata/jmx/login_flow.jmx"
@@ -117,7 +117,7 @@ func TestImportLoginFlow(t *testing.T) {
 	if open.Method != "GET" || open.URL != "/login" || *open.FollowRedirects != true {
 		t.Errorf("open login = %+v", open)
 	}
-	if !reflect.DeepEqual(open.Headers, []model.Header{{Name: "X-Client", Value: "phoenix-${__vu()}"}}) {
+	if !reflect.DeepEqual(open.Headers, []model.Header{{Name: "X-Client", Value: "loadmeter-${__vu()}"}}) {
 		t.Errorf("open login headers = %+v", open.Headers)
 	}
 	wantRe := model.Extractor{Name: "csrf", Type: model.ExRegex, Expr: `name="csrf" value="([^"]+)"`, Group: 1, Match: 1, Default: "NOT_FOUND"}
@@ -272,7 +272,7 @@ func TestUnsupportedElementsReported(t *testing.T) {
 		{"TestPlan/Shoppers/Paginate", model.Unsupported, []string{"While Controller", "${more}"}},
 		{"TestPlan/Shoppers/Long token", model.Unsupported, []string{"__groovy", "disabled group"}},
 		{"TestPlan/Shoppers/Throughput Shaping Timer", model.Unsupported, []string{"kg.apc.jmeter.timers.VariableThroughputTimer", "JMeter Plugins"}},
-		{"TestPlan/View Results Tree", model.Ignored, []string{"UI/listener element; Phoenix reports replace it"}},
+		{"TestPlan/View Results Tree", model.Ignored, []string{"UI/listener element; Load Meter reports replace it"}},
 		{"TestPlan/Shoppers/Debug endpoint", model.Ignored, []string{"disabled"}},
 		{"TestPlan/HTTP Cache Manager", model.Ignored, []string{"cache"}},
 		{"TestPlan/Admins", model.Partial, []string{"one load thread group"}},
@@ -551,7 +551,7 @@ func TestFunctionMapping(t *testing.T) {
 		}
 	}
 	if _, issues := exportFuncs("${__iteration()}"); len(issues) != 1 {
-		t.Errorf("unmapped Phoenix function not reported")
+		t.Errorf("unmapped Load Meter function not reported")
 	}
 }
 

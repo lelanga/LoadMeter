@@ -60,7 +60,7 @@ async function aiTab(panel) {
         keyInputs.set(pr, key);
         provBox.append(h('div', { class: 'card' }, h('div', { class: 'form-grid' },
           field('Id', idIn), field('Kind', kind), field('Base URL', base, 'Leave empty for the default.'), field('Model', model),
-          field('API key', key, pr.kind === 'ollama' ? 'Local models need no key.' : 'Write-only: stored by the Phoenix server, never shown again.')),
+          field('API key', key, pr.kind === 'ollama' ? 'Local models need no key.' : 'Write-only: stored by the Load Meter server, never shown again.')),
         h('div', { class: 'actions', style: { marginTop: '.5rem' } },
           pr.hasKey ? badge('key stored', 'ok') : badge('no key', 'neutral'),
           button('Test', async () => {
@@ -99,10 +99,10 @@ async function aiTab(panel) {
     }
 
     panel.append(h('div', { class: 'card' }, h('h2', {}, 'AI assistant'),
-      note('info', 'AI is optional. Phoenix imports, edits, runs and reports without it. The assistant only suggests plans; actions that change things need your confirmation.'),
+      note('info', 'AI is optional. Load Meter imports, edits, runs and reports without it. The assistant only suggests plans; actions that change things need your confirmation.'),
       check('Enable the AI assistant', enabled), h('br'),
       check('I consent to sending redacted data to cloud providers', consent),
-      h('p', { class: 'hint' }, 'What is sent: prompts and short excerpts of scenarios or results. Before sending, Phoenix redacts secrets, tokens, cookies, passwords and recognizable personal values. The cloud provider you configure receives the redacted text and handles it under its own terms. Without this consent only local providers can be used.'),
+      h('p', { class: 'hint' }, 'What is sent: prompts and short excerpts of scenarios or results. Before sending, Load Meter redacts secrets, tokens, cookies, passwords and recognizable personal values. The cloud provider you configure receives the redacted text and handles it under its own terms. Without this consent only local providers can be used.'),
       check('Local-only mode (never contact cloud providers)', local),
       h('p', { class: 'hint' }, 'Use a local model such as Ollama to keep everything on this computer.')),
     h('div', { class: 'card' }, h('h2', {}, 'Providers'), provBox),

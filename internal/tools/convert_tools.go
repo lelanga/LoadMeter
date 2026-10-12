@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lelanga/phoenix/internal/openapi"
-	"github.com/lelanga/phoenix/internal/service"
+	"github.com/lelanga/loadmeter/internal/openapi"
+	"github.com/lelanga/loadmeter/internal/service"
 )
 
 func init() {
@@ -42,7 +42,7 @@ func init() {
 					IncludeDeprecated: getBool(a, "includeDeprecated"), IncludeDestructive: getBool(a, "includeDestructive"),
 				})
 			}},
-		Tool{Name: "export_k6", Description: "Export a scenario to a k6 JavaScript file in the workspace exports folder, with a report of anything that could not be represented. The script has no remote imports. k6 does not enforce Phoenix's host allowlist.",
+		Tool{Name: "export_k6", Description: "Export a scenario to a k6 JavaScript file in the workspace exports folder, with a report of anything that could not be represented. The script has no remote imports. k6 does not enforce Load Meter's host allowlist.",
 			InputSchema: obj(map[string]any{"file": fileProp}, "file"),
 			Handler: func(ctx context.Context, s *service.Service, a map[string]any) (any, error) {
 				dir := filepath.Join(s.WS.Dir, "exports")

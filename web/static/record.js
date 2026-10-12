@@ -86,7 +86,7 @@ export async function renderRecord(root) {
       h('div', { class: 'card' }, h('h2', {}, 'Recording'),
         h('div', { class: 'tools' }, badge('Recording', 'warn'), h('span', {}, 'Captured requests: ', count), txBadge),
         h('p', { class: 'small muted' }, 'Proxy ', h('code', {}, 'http://' + rec.proxyAddr), ' (loopback only). Auto-stops at ', new Date(rec.autoStopAt).toLocaleTimeString(), '.'),
-        rec.browser ? null : note('info', 'Set ', h('code', {}, 'http://' + rec.proxyAddr), ' as the HTTP and HTTPS proxy of your browser. For HTTPS sites the browser must trust the recording CA ', h('code', {}, rec.caCertPath), ' (run ', h('code', {}, 'phoenix record ca'), ' for instructions).'),
+        rec.browser ? null : note('info', 'Set ', h('code', {}, 'http://' + rec.proxyAddr), ' as the HTTP and HTTPS proxy of your browser. For HTTPS sites the browser must trust the recording CA ', h('code', {}, rec.caCertPath), ' (run ', h('code', {}, 'loadmeter record ca'), ' for instructions).'),
         exited),
       h('div', { class: 'cols' },
         h('div', { class: 'card' }, h('h2', {}, 'Transactions'),

@@ -17,11 +17,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/extract"
-	"github.com/lelanga/phoenix/internal/metrics"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/safety"
-	"github.com/lelanga/phoenix/internal/vars"
+	"github.com/lelanga/loadmeter/internal/extract"
+	"github.com/lelanga/loadmeter/internal/metrics"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/safety"
+	"github.com/lelanga/loadmeter/internal/vars"
 )
 
 type ctxKey int
@@ -300,7 +300,7 @@ func (vu *vuState) buildRequest(ctx context.Context, rq *model.Request, used, un
 		req.Header.Set("Content-Type", contentType)
 	}
 	if req.Header.Get("User-Agent") == "" {
-		req.Header.Set("User-Agent", "Phoenix-Performance/0.1")
+		req.Header.Set("User-Agent", "Load Meter-Performance/0.1")
 	}
 	for k, v := range req.Header {
 		size += int64(len(k) + len(strings.Join(v, ",")) + 4)

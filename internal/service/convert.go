@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"path/filepath"
 
-	"github.com/lelanga/phoenix/internal/k6"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/openapi"
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/k6"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/openapi"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 // ImportOpenAPI converts an OpenAPI 3.x JSON document into a saved scenario.

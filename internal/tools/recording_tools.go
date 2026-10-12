@@ -3,13 +3,13 @@ package tools
 import (
 	"context"
 
-	"github.com/lelanga/phoenix/internal/service"
+	"github.com/lelanga/loadmeter/internal/service"
 )
 
 func init() {
 	Register(
 		Tool{Name: "start_recording", Confirm: true,
-			Description: "Start recording a user journey into a script: starts a local recording proxy (HTTP and HTTPS via Phoenix's local recording CA) and, with browser=true, launches a local Chrome/Chromium/Edge with a temporary profile that uses it. A human then browses the application; use mark_transaction to name steps and stop_recording to create the scenario. Requires confirm=true because it launches a browser on the user's machine. Recording is not limited by the allowlist, but recorded hosts must be allowlisted before load testing.",
+			Description: "Start recording a user journey into a script: starts a local recording proxy (HTTP and HTTPS via Load Meter's local recording CA) and, with browser=true, launches a local Chrome/Chromium/Edge with a temporary profile that uses it. A human then browses the application; use mark_transaction to name steps and stop_recording to create the scenario. Requires confirm=true because it launches a browser on the user's machine. Recording is not limited by the allowlist, but recorded hosts must be allowlisted before load testing.",
 			InputSchema: obj(map[string]any{
 				"browser":      boolean("Launch a local Chromium-family browser configured for recording (default false: the user points a browser at proxyAddr)"),
 				"startUrl":     str("First page to open in the launched browser (http:// or https://)"),

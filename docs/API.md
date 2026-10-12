@@ -1,12 +1,12 @@
-# Phoenix local HTTP API
+# Load Meter local HTTP API
 
-`phoenix serve` starts the web UI and this JSON API on `127.0.0.1:7878` (loopback only by default).
+`loadmeter serve` starts the web UI and this JSON API on `127.0.0.1:7878` (loopback only by default).
 
 ## Authentication and browser safety
 - On start the server prints a URL with a one-time token: `http://127.0.0.1:7878/?token=XYZ`.
-- Opening it sets an `HttpOnly; SameSite=Strict` cookie `phoenix_session`. Every `/api/*` call needs that cookie or an `X-Phoenix-Token: XYZ` header.
+- Opening it sets an `HttpOnly; SameSite=Strict` cookie `loadmeter_session`. Every `/api/*` call needs that cookie or an `X-LoadMeter-Token: XYZ` header.
 - Requests whose `Host` header is not `127.0.0.1`, `localhost` or `[::1]` (with port) are rejected. This blocks DNS rebinding.
-- State-changing calls must send `Content-Type: application/json` (or multipart for uploads) and the `X-Phoenix-Token` header. The UI reads the token from `GET /api/session`, which works with the cookie.
+- State-changing calls must send `Content-Type: application/json` (or multipart for uploads) and the `X-LoadMeter-Token` header. The UI reads the token from `GET /api/session`, which works with the cookie.
 - Error responses are always `{"error": "message"}` with a 4xx/5xx status.
 
 ## Session
@@ -38,7 +38,7 @@
 | POST | /api/import/har | multipart: `file`, `name?`, `includeStatic?`, `keepCredentials?` | `{file, report:CompatReport, correlations:[Candidate], parameters:[ParamSuggestion]}` |
 | POST | /api/import/jmx | multipart: `file`, `name?` | `{file, report:CompatReport}` |
 | POST | /api/import/loadrunner | multipart: `files` (repeat; all files of the script folder), `name?` | `{file, report:CompatReport, analysis}` |
-| GET | /api/export/jmx/{file} | – | `.jmx` download; header `X-Phoenix-Compat` carries a short summary |
+| GET | /api/export/jmx/{file} | – | `.jmx` download; header `X-Load Meter-Compat` carries a short summary |
 | GET | /api/export/jmx/{file}/report | – | CompatReport JSON |
 
 `CompatReport`: `{source, format, items:[{element,name,location,status,note}], warnings, manualChanges, confidence, validation}`. `status` is one of supported, partial, unsupported or ignored.

@@ -1,6 +1,6 @@
 # JMeter (.jmx) support matrix
 
-Package `internal/jmx` converts JMeter 5.x test plans to the Phoenix scenario IR
+Package `internal/jmx` converts JMeter 5.x test plans to the Load Meter scenario IR
 (`Import`) and back (`Export`). Every source element produces exactly one
 `CompatItem` in the report. JMeter functions that can't be mapped get their own
 `function __X` item. Statuses:
@@ -12,10 +12,10 @@ Package `internal/jmx` converts JMeter 5.x test plans to the Phoenix scenario IR
 - **ignored**: intentionally skipped. These are UI-only, disabled or cache elements.
 
 "Verified" in this document means "covered by `go test ./internal/jmx/`". The
-tests check how elements map and that a .jmx → Phoenix → .jmx → Phoenix round
-trip gives the same result. They do **not** run JMeter or the Phoenix engine
+tests check how elements map and that a .jmx → Load Meter → .jmx → Load Meter round
+trip gives the same result. They do **not** run JMeter or the Load Meter engine
 against a server. Runtime equivalence is therefore not proven. Notes that
-mention Phoenix runtime behaviour come from reading `internal/engine` at the
+mention Load Meter runtime behaviour come from reading `internal/engine` at the
 time of writing, and that package is still changing.
 
 ## Input safety
@@ -37,7 +37,7 @@ time of writing, and that package is still changing.
 | `Arguments` (User Defined Variables) | supported | Mapped to `Variables`. Like JMeter, these are global regardless of where they sit. |
 | `ThreadGroup` (first enabled) | supported / partial | See "Workload mapping" below. |
 | Additional `ThreadGroup`s | partial | Not loaded. Their children become a disabled group named after the thread group. Split them into a separate scenario to run them. |
-| `SetupThreadGroup` | partial | Children are appended to `Setup`. JMeter runs setUp once with its own thread pool; Phoenix runs setup once per VU. |
+| `SetupThreadGroup` | partial | Children are appended to `Setup`. JMeter runs setUp once with its own thread pool; Load Meter runs setup once per VU. |
 | `PostThreadGroup` | partial | Children are appended to `Teardown`. Same difference as setUp. |
 | `kg.apc.jmeter.threads.UltimateThreadGroup` | partial | Schedule rows are summed into a piecewise-linear `ramping-vus` profile. Zero-length ramps become 1 s. Loop settings are ignored. |
 | `com.blazemeter...ConcurrencyThreadGroup` | partial | Mapped to `ramping-vus`: ramp to TargetLevel over RampUp, then hold. Stepped ramps become linear. The Iterations limit is not applied. A missing hold becomes 10 m. |
@@ -47,7 +47,7 @@ time of writing, and that package is still changing.
 
 ### Workload mapping (`ThreadGroup`)
 
-| JMeter settings | Phoenix workload | Status |
+| JMeter settings | Load Meter workload | Status |
 |---|---|---|
 | scheduler + duration D, ramp R < D, loops −1 | `ramping-vus` stages `[R→N, (D−R) hold N]` | supported |
 | scheduler + duration D, ramp 0 | `constant-vus` N, D | supported |
@@ -67,7 +67,7 @@ time of writing, and that package is still changing.
 | domain / port / protocol / path | supported | Gives a relative URL when the server comes from scenario-level defaults. Otherwise the URL is absolute (protocol defaults to http, or https on port 443; default ports are omitted). A full URL in `path` is used as-is. |
 | method | supported | Defaults to GET. |
 | GET/HEAD/OPTIONS/TRACE/DELETE arguments | supported | Appended to the query. `always_encode` arguments are URL-encoded with `${...}` kept intact. |
-| POST/PUT/PATCH arguments | supported | Mapped to `Form`. Values without `always_encode` are URL-decoded because Phoenix re-encodes them. Unnamed arguments are concatenated into `Body`. |
+| POST/PUT/PATCH arguments | supported | Mapped to `Form`. Values without `always_encode` are URL-decoded because Load Meter re-encodes them. Unnamed arguments are concatenated into `Body`. |
 | `postBodyRaw` | supported | Mapped to `Body`, the concatenation of argument values. |
 | `HTTPsampler.Files` / `DO_MULTIPART_POST` | supported | Mapped to `Multipart`: values first, then files with the mime type. Relative file paths resolve against a different base directory. |
 | follow_redirects / auto_redirects | supported | `FollowRedirects = follow OR auto`. JMeter's redirect sub-samples are not reproduced. |
@@ -78,7 +78,7 @@ time of writing, and that package is still changing.
 | `HeaderManager` at Test Plan level | supported | Mapped to `Defaults.Headers`. |
 | `HeaderManager` elsewhere | supported | Merged into every request in scope. A header closer to the sampler wins (case-insensitive). |
 | `CookieManager` | supported / partial | Enables cookies; a per-VU Go cookiejar is used. Non-standard policy, clearEachIteration and predefined cookies make it partial. **Without any Cookie Manager, `Defaults.DisableCookies=true`**, which matches JMeter, and a warning is added. |
-| `CacheManager` | ignored | Phoenix does not emulate a browser cache. |
+| `CacheManager` | ignored | Load Meter does not emulate a browser cache. |
 | `AuthManager`, `DNSCacheManager`, `KeystoreConfig`, `CounterConfig`, `RandomVariableConfig`, `LoginConfig`, `JDBCDataSource`, other `ConfigTestElement`s | unsupported | See "Model gaps". |
 
 ## Import: data, timers, logic
@@ -87,10 +87,10 @@ time of writing, and that package is still changing.
 |---|---|---|
 | `CSVDataSet` | supported | `filename`, `delimiter` (`\t` becomes a tab), and `variableNames` (split on the delimiter) map to `Columns`. `recycle` maps to `OnExhaust=recycle`, and `stopThread` to `stop`. |
 | CSV shareMode.all / shareMode.group | supported | Mapped to `sequential` (only one thread group is imported). |
-| CSV shareMode.thread | partial | Mapped to `per-vu`. In JMeter each thread reads the whole file; in Phoenix the row is chosen by VU index. |
+| CSV shareMode.thread | partial | Mapped to `per-vu`. In JMeter each thread reads the whole file; in Load Meter the row is chosen by VU index. |
 | CSV recycle=false, stopThread=false | partial | Mapped to `stop`. JMeter would continue with `<EOF>` values. |
 | CSV ignoreFirstLine + explicit names | partial | Columns are cleared so the file header row is used. The model cannot skip a header and also name the columns. |
-| CSV inside a loop or controller / non-UTF-8 | partial / note | Phoenix data sources are scenario-wide and advance once per iteration. |
+| CSV inside a loop or controller / non-UTF-8 | partial / note | Load Meter data sources are scenario-wide and advance once per iteration. |
 | `ConstantTimer` | supported | A think step is emitted before **each sampler in scope**, matching JMeter's timer scoping. |
 | `UniformRandomTimer` | supported | Think `[delay, delay+range]`. |
 | `GaussianRandomTimer` | partial | Approximated as uniform `[offset−dev, offset+dev]`. |
@@ -101,13 +101,13 @@ time of writing, and that package is still changing.
 | `TestAction` (Flow Control Action) with pause | supported | Mapped to a think step, plus any timers in scope. |
 | `TestAction` stop / restart / break | unsupported | |
 | `UserParameters` | supported | A `set` step is emitted before each sampler in scope. Multiple thread columns, or per-iteration with more than one sampler in scope, make it partial. |
-| `TransactionController` | supported | Mapped to a transaction step. With includeTimers=true it is partial, because Phoenix leaves think time out of transaction time. |
+| `TransactionController` | supported | Mapped to a transaction step. With includeTimers=true it is partial, because Load Meter leaves think time out of transaction time. |
 | `LoopController` (nested) | supported | Loop with `Count`. `-1` becomes an enabled group (partial). A count that isn't a number becomes 1 (partial). |
 | `GenericController`, `RecordingController` | supported | Mapped to a group. |
-| `CriticalSectionController` | partial | Plain group: Phoenix has no locking across VUs. |
+| `CriticalSectionController` | partial | Plain group: Load Meter has no locking across VUs. |
 | `IfController` with a simple condition | supported | Accepted forms: `"${x}" == "y"`, `"${x}" != "y"` (single quotes too), and the same wrapped in `${__jexl3(...)}`, `${__jexl2(...)}` or `${__groovy(...)}`. These become `${x} == y`. `${__groovy(vars.get("x") != null && vars.get("x") != "")}` becomes `${x}`. evaluateAll makes it partial. |
 | `IfController` with any other condition | unsupported | Children are kept in a disabled group, and the original condition is in the note. |
-| `OnceOnlyController` | partial | Children move to `Setup`, which Phoenix runs once per VU before iterations instead of at the controller's position. Inside setUp, tearDown or a disabled container it becomes a plain group. |
+| `OnceOnlyController` | partial | Children move to `Setup`, which Load Meter runs once per VU before iterations instead of at the controller's position. Inside setUp, tearDown or a disabled container it becomes a plain group. |
 | `WhileController`, `ForeachController`, `ThroughputController`, `InterleaveControl`, `RandomController`, `RandomOrderController`, `RunTime`, `SwitchController`, `ModuleController`, `IncludeController`, `TestFragmentController` | unsupported | Children are kept in a disabled group. Each child still gets its own item, noted "inside non-executed container". |
 
 ## Import: assertions and extractors
@@ -129,7 +129,7 @@ time of writing, and that package is still changing.
 | `DurationAssertion` | supported | Mapped to `max_latency` (e.g. `2s`). |
 | `RegexExtractor` (body) | supported | refname, regex and default map across. Template `$N$` becomes `Group`. match_number 0 becomes random (−1), N stays N, and −1 (all) becomes first (partial). |
 | `RegexExtractor` with a combined template, `$0$` plus groups, or the unescaped body | partial | |
-| `RegexExtractor` on headers | supported / unsupported | The exact patterns Phoenix exports for header and cookie extractors are recognised and mapped back. Other header regexes are unsupported. |
+| `RegexExtractor` on headers | supported / unsupported | The exact patterns Load Meter exports for header and cookie extractors are recognised and mapped back. Other header regexes are unsupported. |
 | `RegexExtractor` on the response code | supported | Maps to the `status` extractor when the pattern is `(.*)`, `(.+)`, `(\d+)` or similar. |
 | `RegexExtractor` on URL, message or request headers | unsupported | |
 | `JSONPostProcessor` | supported | `;`-separated names, paths, match numbers and defaults become one extractor each. compute_concat or Jayway filters/functions make it partial. |
@@ -144,31 +144,31 @@ time of writing, and that package is still changing.
 | JMeter element | Status | Notes |
 |---|---|---|
 | `JSR223*`, `BeanShell*`, `BSF*` (sampler, pre, post, assertion, timer, listener) | unsupported | Never executed. The note records the language, script file and an excerpt, and an entry is added to `Manual`. |
-| `JavaSampler`, `JDBCSampler`, JMS, FTP, LDAP, TCP, SMTP, OS process, AJP, mail reader, Bolt samplers | unsupported | Phoenix only executes HTTP. |
+| `JavaSampler`, `JDBCSampler`, JMS, FTP, LDAP, TCP, SMTP, OS process, AJP, mail reader, Bolt samplers | unsupported | Load Meter only executes HTTP. |
 | `DebugSampler`, `DebugPostProcessor` | ignored | |
-| `ResultCollector` (all GUI listeners), `BackendListener`, `ResultSaver`, `Summariser`, `*ResultCollector`, `*Visualizer` | ignored | "UI/listener element; Phoenix reports replace it" |
+| `ResultCollector` (all GUI listeners), `BackendListener`, `ResultSaver`, `Summariser`, `*ResultCollector`, `*Visualizer` | ignored | "UI/listener element; Load Meter reports replace it" |
 | `URLRewritingModifier`, `AnchorModifier`, `RegExUserParameters`, `SampleTimeout`, `ResultAction`, JDBC pre/post | unsupported | |
 | Any other testclass, including `kg.apc.*` and `com.blazemeter.*` plugins | unsupported | The note names the testclass and whether it comes from a plugin. Children are kept in a disabled group. |
 
 ## Import: JMeter functions
 
-| JMeter | Phoenix | Status |
+| JMeter | Load Meter | Status |
 |---|---|---|
 | `${var}` | `${var}` | supported |
 | `${__UUID()}`, `${__UUID}` | `${__uuid()}` | supported |
 | `${__Random(a,b)}` | `${__randomInt(a,b)}` | supported (partial when a result variable is given) |
 | `${__time()}`, `${__time(,)}` | `${__timestamp()}` | supported |
 | `${__time(fmt,)}` | `${__timestamp(fmt)}` | partial (only a SimpleDateFormat subset) |
-| `${__counter(FALSE,)}` | `${__counter()}` | supported. `TRUE` (per-thread) is partial because the Phoenix counter is global. |
+| `${__counter(FALSE,)}` | `${__counter()}` | supported. `TRUE` (per-thread) is partial because the Load Meter counter is global. |
 | `${__threadNum}` | `${__vu()}` | supported |
 | `${__RandomString(n,chars)}` | `${__randomString(n)}` | supported when chars is empty or `[a-zA-Z0-9]`; partial otherwise |
 | `${__P(name,default)}`, `${__property(name,,default)}` | `${name}` + `Variables[name]=default` | partial (property becomes a variable) |
 | `${__urlencode(x)}` | `${__urlencode(x)}` | supported |
 | anything else | left as text | unsupported, reported as `function __X` |
 
-## Export (Phoenix → JMeter 5.6)
+## Export (Load Meter → JMeter 5.6)
 
-| Phoenix construct | JMeter output | Status / notes |
+| Load Meter construct | JMeter output | Status / notes |
 |---|---|---|
 | Scenario name, description, variables | `TestPlan` + User Defined Variables | supported |
 | `Defaults.BaseURL` | HTTP Request Defaults (protocol, domain, port) | supported. A base path is prefixed to relative request paths, because JMeter's default path is not a prefix. |
@@ -213,8 +213,8 @@ time of writing, and that package is still changing.
 | assert jsonpath / max_latency | JSONPathAssertion (ISREGEX=false) / DurationAssertion | supported |
 | assert header | ResponseAssertion Substring on headers "Name: value" | partial |
 | SLAs | none | unsupported (JMeter has no built-in pass/fail criteria) |
-| Phoenix functions `__uuid`, `__randomInt`, `__timestamp`, `__counter`, `__vu`, `__randomString`, `__urlencode` | `__UUID`, `__Random`, `__time`, `__counter(FALSE,)`, `__threadNum`, `__RandomString(n,[a-zA-Z0-9])`, `__urlencode` | supported |
-| other Phoenix functions (`__iteration`, `__env`) | left as text | partial |
+| Load Meter functions `__uuid`, `__randomInt`, `__timestamp`, `__counter`, `__vu`, `__randomString`, `__urlencode` | `__UUID`, `__Random`, `__time`, `__counter(FALSE,)`, `__threadNum`, `__RandomString(n,[a-zA-Z0-9])`, `__urlencode` | supported |
+| other Load Meter functions (`__iteration`, `__env`) | left as text | partial |
 
 All text and attribute values are XML-escaped with `encoding/xml.EscapeText`.
 Collection entries are named with Java `String.hashCode()`, as JMeter does.

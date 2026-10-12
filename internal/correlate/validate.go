@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/engine"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/engine"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 type StepResult struct {

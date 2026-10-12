@@ -13,10 +13,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lelanga/phoenix/internal/correlate"
-	"github.com/lelanga/phoenix/internal/mockserver"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/correlate"
+	"github.com/lelanga/loadmeter/internal/mockserver"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 // RecordShopFlow drives the mock shop like a browser and returns a HAR.
@@ -75,7 +75,7 @@ func RecordShopFlow(t testing.TB, base string) []byte {
 }
 
 func TestImportCorrelateValidate(t *testing.T) {
-	t.Setenv("PHOENIX_HOME", t.TempDir())
+	t.Setenv("LOADMETER_HOME", t.TempDir())
 	srv := httptest.NewServer(mockserver.New("rec-1").Handler())
 	defer srv.Close()
 	harBytes := RecordShopFlow(t, srv.URL)

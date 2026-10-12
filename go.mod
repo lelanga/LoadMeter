@@ -1,3 +1,3 @@
-module github.com/lelanga/phoenix
+module github.com/lelanga/loadmeter
 
 go 1.24.7

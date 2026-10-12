@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 func TestDetectApply(t *testing.T) {

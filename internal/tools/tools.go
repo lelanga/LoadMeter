@@ -1,4 +1,4 @@
-// Package tools exposes Phoenix operations as typed tools with JSON schemas.
+// Package tools exposes Load Meter operations as typed tools with JSON schemas.
 // The same registry backs the MCP server (Claude, ChatGPT, Gemini CLI, Cursor,
 // VS Code) and the built-in natural-language assistant, so AI callers go
 // through exactly the same validation and safety checks as the UI.
@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/app"
-	"github.com/lelanga/phoenix/internal/har"
-	"github.com/lelanga/phoenix/internal/safety"
-	"github.com/lelanga/phoenix/internal/service"
+	"github.com/lelanga/loadmeter/internal/app"
+	"github.com/lelanga/loadmeter/internal/har"
+	"github.com/lelanga/loadmeter/internal/safety"
+	"github.com/lelanga/loadmeter/internal/service"
 )
 
 type Tool struct {

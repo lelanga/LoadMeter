@@ -10,18 +10,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/metrics"
-	"github.com/lelanga/phoenix/internal/mockserver"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/metrics"
+	"github.com/lelanga/loadmeter/internal/mockserver"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 func TestMain(m *testing.M) {
-	home, err := os.MkdirTemp("", "phoenix-engine-test-")
+	home, err := os.MkdirTemp("", "loadmeter-engine-test-")
 	if err != nil {
 		panic(err)
 	}
-	os.Setenv("PHOENIX_HOME", home)
+	os.Setenv("LOADMETER_HOME", home)
 	code := m.Run()
 	os.RemoveAll(home)
 	os.Exit(code)

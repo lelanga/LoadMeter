@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 type param struct {
@@ -127,7 +127,7 @@ func (im *importer) operation(path, method string, op, item map[string]any, labe
 		case "header":
 			switch strings.ToLower(p.name) {
 			case "accept", "content-type", "authorization":
-				g.note("header parameter " + p.name + " ignored (managed by Phoenix/security)")
+				g.note("header parameter " + p.name + " ignored (managed by Load Meter/security)")
 				continue
 			}
 			required, _ := p.m["required"].(bool)

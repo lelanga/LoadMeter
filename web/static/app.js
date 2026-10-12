@@ -1,4 +1,4 @@
-// Phoenix web UI entry point: session bootstrap, mode toggle and hash router.
+// Load Meter web UI entry point: session bootstrap, mode toggle and hash router.
 import { initSession } from './api.js';
 import { h, initMode, setMode, getMode, toast, errorBox, loading, confirmDialog } from './ui.js';
 import { renderScenarios } from './scenarios.js';
@@ -48,7 +48,7 @@ async function route(keep) {
     if (a.dataset.nav === r.nav) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
   title.textContent = r.title;
-  document.title = r.title + ' - Phoenix Performance';
+  document.title = r.title + ' - Load Meter';
   main.replaceChildren(loading());
   try {
     const c = await r.view(main, params, { keep, query, session });
@@ -101,10 +101,10 @@ async function boot() {
     Object.assign(session, await initSession());
   } catch (e) {
     main.replaceChildren(h('div', { class: 'err-box', role: 'alert' }, h('h2', {}, 'Not signed in'), h('p', {}, e.message),
-      h('p', {}, 'Open the link printed in the terminal by ', h('code', {}, 'phoenix serve'), ' (it looks like http://127.0.0.1:7878/?token=...).')));
+      h('p', {}, 'Open the link printed in the terminal by ', h('code', {}, 'loadmeter serve'), ' (it looks like http://127.0.0.1:7878/?token=...).')));
     return;
   }
-  document.getElementById('side-foot').replaceChildren(h('div', {}, 'Phoenix ' + (session.version || '')), h('div', { title: session.workspace }, session.workspace || ''));
+  document.getElementById('side-foot').replaceChildren(h('div', {}, 'Load Meter ' + (session.version || '')), h('div', { title: session.workspace }, session.workspace || ''));
   lastHash = location.hash;
   await route(false);
 }

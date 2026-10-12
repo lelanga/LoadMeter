@@ -6,10 +6,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
-// alnum is the alphabet Phoenix's __randomString uses; JMeter __RandomString
+// alnum is the alphabet Load Meter's __randomString uses; JMeter __RandomString
 // calls with exactly this character set map without loss.
 const alnum = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
@@ -118,7 +118,7 @@ func unescapeArg(s string) string {
 	return strings.NewReplacer(`\,`, ",", `\(`, "(", `\)`, ")", `\\`, `\`).Replace(s)
 }
 
-// importFuncs maps JMeter functions in s to Phoenix syntax. ${__P(name,def)}
+// importFuncs maps JMeter functions in s to Load Meter syntax. ${__P(name,def)}
 // becomes ${name} and records def in vars (only when name is not set yet).
 func importFuncs(s string, vars map[string]string) (string, []fnIssue) {
 	var issues []fnIssue
@@ -144,18 +144,18 @@ func importFuncs(s string, vars map[string]string) (string, []fnIssue) {
 				return raw
 			}
 			if arg(2) != "" {
-				add(r.name, model.Partial, "%s: result variable %q is not stored by Phoenix __randomInt", raw, arg(2))
+				add(r.name, model.Partial, "%s: result variable %q is not stored by Load Meter __randomInt", raw, arg(2))
 			}
 			return "${__randomInt(" + arg(0) + "," + arg(1) + ")}"
 		case "__time":
 			out := "${__timestamp()}"
 			if f := arg(0); f != "" {
 				if strings.HasPrefix(f, "/") {
-					add(r.name, model.Unsupported, "%s: divisor form has no Phoenix equivalent; left as text", raw)
+					add(r.name, model.Unsupported, "%s: divisor form has no Load Meter equivalent; left as text", raw)
 					return raw
 				}
 				out = "${__timestamp(" + f + ")}"
-				add(r.name, model.Partial, "%s: Phoenix __timestamp(format) understands only a SimpleDateFormat subset (yyyy MM dd HH mm ss SSS)", raw)
+				add(r.name, model.Partial, "%s: Load Meter __timestamp(format) understands only a SimpleDateFormat subset (yyyy MM dd HH mm ss SSS)", raw)
 			}
 			if arg(1) != "" {
 				add(r.name, model.Partial, "%s: result variable %q is not stored", raw, arg(1))
@@ -163,7 +163,7 @@ func importFuncs(s string, vars map[string]string) (string, []fnIssue) {
 			return out
 		case "__counter":
 			if !strings.EqualFold(arg(0), "FALSE") {
-				add(r.name, model.Partial, "%s: JMeter per-thread counter (TRUE) mapped to Phoenix __counter(), which is global across VUs", raw)
+				add(r.name, model.Partial, "%s: JMeter per-thread counter (TRUE) mapped to Load Meter __counter(), which is global across VUs", raw)
 			}
 			if arg(1) != "" {
 				add(r.name, model.Partial, "%s: result variable %q is not stored", raw, arg(1))
@@ -179,7 +179,7 @@ func importFuncs(s string, vars map[string]string) (string, []fnIssue) {
 				return raw
 			}
 			if c := unescapeArg(arg(1)); c != "" && c != alnum {
-				add(r.name, model.Partial, "%s: custom character set %q not supported; Phoenix uses [a-zA-Z0-9]", raw, c)
+				add(r.name, model.Partial, "%s: custom character set %q not supported; Load Meter uses [a-zA-Z0-9]", raw, c)
 			}
 			if arg(2) != "" {
 				add(r.name, model.Partial, "%s: result variable %q is not stored", raw, arg(2))
@@ -199,16 +199,16 @@ func importFuncs(s string, vars map[string]string) (string, []fnIssue) {
 			if _, ok := vars[name]; !ok {
 				vars[name] = def
 			}
-			add(r.name, model.Partial, "%s: JMeter property mapped to scenario variable ${%s} (default %q); set it in Phoenix variables instead of -J%s", raw, name, def, name)
+			add(r.name, model.Partial, "%s: JMeter property mapped to scenario variable ${%s} (default %q); set it in Load Meter variables instead of -J%s", raw, name, def, name)
 			return "${" + name + "}"
 		}
-		add(r.name, model.Unsupported, "JMeter function %s has no Phoenix equivalent; left as text (will not resolve at runtime)", raw)
+		add(r.name, model.Unsupported, "JMeter function %s has no Load Meter equivalent; left as text (will not resolve at runtime)", raw)
 		return raw
 	})
 	return out, issues
 }
 
-// exportFuncs maps Phoenix built-ins in s to JMeter functions.
+// exportFuncs maps Load Meter built-ins in s to JMeter functions.
 func exportFuncs(s string) (string, []fnIssue) {
 	var issues []fnIssue
 	out := rewrite(s, func(r ref, raw string) string {
@@ -245,7 +245,7 @@ func exportFuncs(s string) (string, []fnIssue) {
 			return "${__urlencode(" + strings.Join(r.args, ",") + ")}"
 		}
 		issues = append(issues, fnIssue{Fn: r.name, Status: model.Partial,
-			Note: fmt.Sprintf("Phoenix function %s has no JMeter mapping; left as text", raw)})
+			Note: fmt.Sprintf("Load Meter function %s has no JMeter mapping; left as text", raw)})
 		return raw
 	})
 	return out, issues

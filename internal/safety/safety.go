@@ -31,16 +31,16 @@ func DefaultPolicy() Policy {
 	return Policy{MaxVUs: 1000, MaxDuration: "4h", RequireConfirmAbove: 50}
 }
 
-// ConfigDir is ~/.phoenix (override with PHOENIX_HOME).
+// ConfigDir is ~/.loadmeter (override with LOADMETER_HOME).
 func ConfigDir() string {
-	if d := os.Getenv("PHOENIX_HOME"); d != "" {
+	if d := os.Getenv("LOADMETER_HOME"); d != "" {
 		return d
 	}
 	h, err := os.UserHomeDir()
 	if err != nil {
-		return ".phoenix"
+		return ".loadmeter"
 	}
-	return filepath.Join(h, ".phoenix")
+	return filepath.Join(h, ".loadmeter")
 }
 
 // LoadPolicy reads ConfigDir()/policy.json; a missing file yields the default policy.

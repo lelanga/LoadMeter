@@ -160,7 +160,7 @@ func TestLimiterFractionalRate(t *testing.T) {
 }
 
 func TestLoadPolicyDefaultWhenMissing(t *testing.T) {
-	t.Setenv("PHOENIX_HOME", t.TempDir())
+	t.Setenv("LOADMETER_HOME", t.TempDir())
 	p, err := LoadPolicy()
 	if err != nil {
 		t.Fatal(err)
@@ -176,7 +176,7 @@ func TestLoadPolicyDefaultWhenMissing(t *testing.T) {
 
 func TestPolicySaveLoadAndInvalid(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("PHOENIX_HOME", home)
+	t.Setenv("LOADMETER_HOME", home)
 	in := Policy{AllowedHosts: []string{"a.example.com"}, MaxVUs: 7, MaxRPS: 12.5, MaxDuration: "90s", RequireConfirmAbove: 3}
 	if err := SavePolicy(in); err != nil {
 		t.Fatal(err)
@@ -216,7 +216,7 @@ func TestMaxDurFallback(t *testing.T) {
 
 func TestConfigDirEnv(t *testing.T) {
 	d := t.TempDir()
-	t.Setenv("PHOENIX_HOME", d)
+	t.Setenv("LOADMETER_HOME", d)
 	if ConfigDir() != d {
 		t.Errorf("ConfigDir=%q", ConfigDir())
 	}
@@ -224,7 +224,7 @@ func TestConfigDirEnv(t *testing.T) {
 
 func TestAuditWritesJSONLines(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("PHOENIX_HOME", filepath.Join(home, "nested"))
+	t.Setenv("LOADMETER_HOME", filepath.Join(home, "nested"))
 	Audit("run.start", map[string]any{"runId": "r1", "vus": 5})
 	Audit("run.stop", nil)
 	// concurrent writers must not interleave lines

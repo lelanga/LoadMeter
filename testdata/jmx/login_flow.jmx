@@ -34,7 +34,7 @@
         <collectionProp name="HeaderManager.headers">
           <elementProp name="" elementType="Header">
             <stringProp name="Header.name">User-Agent</stringProp>
-            <stringProp name="Header.value">Mozilla/5.0 (Phoenix import test)</stringProp>
+            <stringProp name="Header.value">Mozilla/5.0 (Load Meter import test)</stringProp>
           </elementProp>
           <elementProp name="" elementType="Header">
             <stringProp name="Header.name">Accept</stringProp>
@@ -112,7 +112,7 @@
           <collectionProp name="HeaderManager.headers">
             <elementProp name="" elementType="Header">
               <stringProp name="Header.name">X-Client</stringProp>
-              <stringProp name="Header.value">phoenix-${__threadNum}</stringProp>
+              <stringProp name="Header.value">loadmeter-${__threadNum}</stringProp>
             </elementProp>
           </collectionProp>
         </HeaderManager>

@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/ai"
-	"github.com/lelanga/phoenix/internal/app"
-	"github.com/lelanga/phoenix/internal/safety"
-	"github.com/lelanga/phoenix/internal/service"
+	"github.com/lelanga/loadmeter/internal/ai"
+	"github.com/lelanga/loadmeter/internal/app"
+	"github.com/lelanga/loadmeter/internal/safety"
+	"github.com/lelanga/loadmeter/internal/service"
 )
 
 type env struct {
@@ -30,7 +30,7 @@ type env struct {
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	t.Setenv("PHOENIX_HOME", t.TempDir())
+	t.Setenv("LOADMETER_HOME", t.TempDir())
 	svc, err := service.New(app.Workspace{Dir: filepath.Join(t.TempDir(), "ws")})
 	if err != nil {
 		t.Fatal(err)
@@ -45,9 +45,11 @@ func newEnv(t *testing.T) *env {
 
 type opt func(*http.Request)
 
-func withToken(tok string) opt { return func(r *http.Request) { r.Header.Set("X-Phoenix-Token", tok) } }
+func withToken(tok string) opt {
+	return func(r *http.Request) { r.Header.Set("X-LoadMeter-Token", tok) }
+}
 func withCookie(tok string) opt {
-	return func(r *http.Request) { r.AddCookie(&http.Cookie{Name: "phoenix_session", Value: tok}) }
+	return func(r *http.Request) { r.AddCookie(&http.Cookie{Name: "loadmeter_session", Value: tok}) }
 }
 func withHost(h string) opt { return func(r *http.Request) { r.Host = h } }
 
@@ -100,7 +102,7 @@ func (e *env) saveScenario(file string, sc map[string]any) {
 
 func scenarioJSON(name, baseURL string) map[string]any {
 	return map[string]any{
-		"version": "phoenix/v1", "name": name,
+		"version": "loadmeter/v1", "name": name,
 		"defaults": map[string]any{"baseUrl": baseURL},
 		"steps":    []any{map[string]any{"type": "request", "name": "r", "request": map[string]any{"method": "GET", "url": "/health"}}},
 		"workload": map[string]any{"executor": "constant-vus", "vus": 1, "duration": "1s"},
@@ -122,7 +124,7 @@ func TestHostHeaderRebindingProtection(t *testing.T) {
 		for _, path := range []string{"/api/health", "/", "/style.css"} {
 			req := httptest.NewRequest("GET", "http://"+tc.host+path, nil)
 			req.Host = tc.host
-			req.Header.Set("X-Phoenix-Token", e.srv.Token)
+			req.Header.Set("X-LoadMeter-Token", e.srv.Token)
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
 			if tc.ok && rec.Code == 403 {
@@ -182,7 +184,7 @@ func TestMutatingRequestsNeedHeaderToken(t *testing.T) {
 	e := newEnv(t)
 	for _, m := range []string{"POST", "PUT", "DELETE", "PATCH"} {
 		resp, body := e.do(m, "/api/runs", `{}`, withCookie(e.srv.Token))
-		if resp.StatusCode != 403 || !strings.Contains(string(body), "X-Phoenix-Token") {
+		if resp.StatusCode != 403 || !strings.Contains(string(body), "X-LoadMeter-Token") {
 			t.Errorf("%s with cookie only: %d %s", m, resp.StatusCode, body)
 		}
 		resp, _ = e.do(m, "/api/runs", `{}`, withCookie(e.srv.Token), withToken("wrong"))
@@ -221,7 +223,7 @@ func TestTokenExchangeAndIndex(t *testing.T) {
 	}
 	var ck *http.Cookie
 	for _, c := range resp.Cookies() {
-		if c.Name == "phoenix_session" {
+		if c.Name == "loadmeter_session" {
 			ck = c
 		}
 	}
@@ -230,7 +232,7 @@ func TestTokenExchangeAndIndex(t *testing.T) {
 	}
 	// anonymous index is refused with a helpful page
 	resp, body := e.do("GET", "/", nil)
-	if resp.StatusCode != 401 || !strings.Contains(string(body), "phoenix serve") || strings.Contains(string(body), e.srv.Token) {
+	if resp.StatusCode != 401 || !strings.Contains(string(body), "loadmeter serve") || strings.Contains(string(body), e.srv.Token) {
 		t.Errorf("anonymous index: %d %s", resp.StatusCode, body)
 	}
 	// authed index (cookie) serves the real UI
@@ -545,7 +547,7 @@ func TestDemoRunLiveSSEAndReports(t *testing.T) {
 	}
 
 	req, _ := http.NewRequest("GET", e.ts.URL+"/api/runs/"+id+"/live", nil)
-	req.Header.Set("X-Phoenix-Token", e.srv.Token)
+	req.Header.Set("X-LoadMeter-Token", e.srv.Token)
 	lresp, err := (&http.Client{Timeout: 40 * time.Second}).Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -600,7 +602,7 @@ func TestDemoRunLiveSSEAndReports(t *testing.T) {
 		t.Errorf("run list: %s", raw)
 	}
 	req2, _ := http.NewRequest("GET", e.ts.URL+"/api/runs/"+id+"/live", nil)
-	req2.Header.Set("X-Phoenix-Token", e.srv.Token)
+	req2.Header.Set("X-LoadMeter-Token", e.srv.Token)
 	l2, err := e.cl.Do(req2)
 	if err != nil {
 		t.Fatal(err)
@@ -611,7 +613,7 @@ func TestDemoRunLiveSSEAndReports(t *testing.T) {
 	}
 	// unknown run => error event
 	req3, _ := http.NewRequest("GET", e.ts.URL+"/api/runs/20200101-000000-nothing/live", nil)
-	req3.Header.Set("X-Phoenix-Token", e.srv.Token)
+	req3.Header.Set("X-LoadMeter-Token", e.srv.Token)
 	l3, err := e.cl.Do(req3)
 	if err != nil {
 		t.Fatal(err)

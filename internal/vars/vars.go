@@ -21,7 +21,7 @@ var globalCounter atomic.Int64
 
 // EnvPrefix restricts ${__env(NAME)} to variables starting with this prefix so an
 // imported (untrusted) script cannot read arbitrary secrets from the environment.
-const EnvPrefix = "PHOENIX_"
+const EnvPrefix = "LOADMETER_"
 
 type Context struct {
 	Vars map[string]string
@@ -207,7 +207,7 @@ func urlEncode(s string) string {
 
 // Functions lists built-ins for docs/UI.
 var Functions = []string{"__uuid()", "__randomInt(min,max)", "__randomString(n)", "__timestamp([format])",
-	"__counter()", "__vu()", "__iteration()", "__env(PHOENIX_NAME[,default])", "__urlencode(value)"}
+	"__counter()", "__vu()", "__iteration()", "__env(LOADMETER_NAME[,default])", "__urlencode(value)"}
 
 // EvalCondition evaluates `a == b`, `a != b`, or a single operand (true when
 // non-empty and not "false"/"0") after expansion.

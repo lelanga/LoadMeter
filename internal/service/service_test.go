@@ -9,15 +9,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/app"
-	"github.com/lelanga/phoenix/internal/har"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/app"
+	"github.com/lelanga/loadmeter/internal/har"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 func newSvc(t *testing.T) *Service {
 	t.Helper()
-	t.Setenv("PHOENIX_HOME", t.TempDir())
+	t.Setenv("LOADMETER_HOME", t.TempDir())
 	s, err := New(app.Workspace{Dir: filepath.Join(t.TempDir(), "ws")})
 	if err != nil {
 		t.Fatal(err)

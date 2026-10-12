@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/app"
-	"github.com/lelanga/phoenix/internal/service"
+	"github.com/lelanga/loadmeter/internal/app"
+	"github.com/lelanga/loadmeter/internal/service"
 )
 
 // ProgressFunc reports progress to the MCP client (a no-op unless the client

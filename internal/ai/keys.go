@@ -11,15 +11,15 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 // Key storage order: OS credential store when available (macOS Keychain via
 // `security`, Linux Secret Service via `secret-tool`), otherwise an owner-only
-// (0600) file in the Phoenix config directory. Environment variables named by
+// (0600) file in the Load Meter config directory. Environment variables named by
 // ProviderConfig.KeyEnv always take precedence and are never written anywhere.
 
-const service = "phoenix-performance"
+const service = "loadmeter-performance"
 
 var keyMu sync.Mutex
 
@@ -53,7 +53,7 @@ func SetKey(id, key string) error {
 		if key == "" {
 			return exec.Command("secret-tool", "clear", "service", service, "account", id).Run()
 		}
-		cmd := exec.Command("secret-tool", "store", "--label=Phoenix "+id, "service", service, "account", id)
+		cmd := exec.Command("secret-tool", "store", "--label=Load Meter "+id, "service", service, "account", id)
 		cmd.Stdin = strings.NewReader(key)
 		return cmd.Run()
 	}

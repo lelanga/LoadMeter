@@ -16,10 +16,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/metrics"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/safety"
-	"github.com/lelanga/phoenix/internal/sysres"
+	"github.com/lelanga/loadmeter/internal/metrics"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/safety"
+	"github.com/lelanga/loadmeter/internal/sysres"
 )
 
 type Options struct {

@@ -17,12 +17,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/lelanga/phoenix/internal/mcp"
-	"github.com/lelanga/phoenix/internal/service"
+	"github.com/lelanga/loadmeter/internal/mcp"
+	"github.com/lelanga/loadmeter/internal/service"
 )
 
-// mcpServerName is the key Phoenix uses in every client's config.
-const mcpServerName = "phoenix"
+// mcpServerName is the key Load Meter uses in every client's config.
+const mcpServerName = "loadmeter"
 
 var mcpClients = []string{"claude-desktop", "claude-code", "cursor", "vscode", "gemini", "windsurf"}
 
@@ -38,7 +38,7 @@ func runMCPHTTP(svc *service.Service, addr string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	return (&mcp.Server{Svc: svc}).ServeHTTP(ctx, addr, tok, func(a net.Addr) {
-		fmt.Printf("phoenix MCP server (Streamable HTTP) on http://%s/mcp\nbearer token (also in %s):\n  %s\nSend: Authorization: Bearer <token>. Press Ctrl+C to stop.\n", a, mcp.TokenPath(), tok)
+		fmt.Printf("loadmeter MCP server (Streamable HTTP) on http://%s/mcp\nbearer token (also in %s):\n  %s\nSend: Authorization: Bearer <token>. Press Ctrl+C to stop.\n", a, mcp.TokenPath(), tok)
 	})
 }
 
@@ -152,7 +152,7 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// mergeServer parses data (empty = new file), sets or removes servers[phoenix]
+// mergeServer parses data (empty = new file), sets or removes servers[loadmeter]
 // and returns the new document. Everything else is preserved untouched.
 func mergeServer(data []byte, key string, entry map[string]any, remove bool) (out []byte, changed bool, err error) {
 	top := map[string]json.RawMessage{}
@@ -206,7 +206,7 @@ func installClient(o installOpts, remove bool) error {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 	if !changed {
-		fmt.Fprintf(o.out, "no phoenix entry in %s; nothing to do\n", path)
+		fmt.Fprintf(o.out, "no loadmeter entry in %s; nothing to do\n", path)
 		return nil
 	}
 	if o.dryRun {
@@ -233,9 +233,9 @@ func installClient(o installOpts, remove bool) error {
 		os.Remove(tmp)
 		return err
 	}
-	verb := "installed phoenix into"
+	verb := "installed loadmeter into"
 	if remove {
-		verb = "removed phoenix from"
+		verb = "removed loadmeter from"
 	}
 	fmt.Fprintf(o.out, "%s %s", verb, path)
 	if existed {
@@ -271,13 +271,13 @@ func claudeCodeCmd(o installOpts, remove bool) error {
 	return nil
 }
 
-// cmdMCPInstall handles `phoenix mcp install|uninstall`.
+// cmdMCPInstall handles `loadmeter mcp install|uninstall`.
 func cmdMCPInstall(args []string) error {
 	remove := args[0] == "uninstall"
 	fs := flag.NewFlagSet("mcp "+args[0], flag.ContinueOnError)
 	var o installOpts
 	fs.StringVar(&o.client, "client", "", "claude-desktop|claude-code|cursor|vscode|gemini|windsurf")
-	fs.StringVar(&o.workspace, "workspace", "", "workspace directory Phoenix should use (default: the usual workspace)")
+	fs.StringVar(&o.workspace, "workspace", "", "workspace directory Load Meter should use (default: the usual workspace)")
 	fs.StringVar(&o.project, "project", "", "vscode only: write DIR/.vscode/mcp.json instead of the user-level file")
 	fs.BoolVar(&o.dryRun, "dry-run", false, "show what would change without writing")
 	if err := fs.Parse(args[1:]); err != nil {

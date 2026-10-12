@@ -10,17 +10,17 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/lelanga/phoenix/docs"
-	"github.com/lelanga/phoenix/internal/app"
+	"github.com/lelanga/loadmeter/docs"
+	"github.com/lelanga/loadmeter/internal/app"
 )
 
 const maxListedRuns = 50
 
 var resourceTemplates = []map[string]any{
-	{"uriTemplate": "phoenix://scenarios/{file}", "name": "scenario", "title": "Scenario JSON", "description": "A scenario file from the workspace, e.g. phoenix://scenarios/shop-login.json", "mimeType": "application/json"},
-	{"uriTemplate": "phoenix://runs/{runId}/summary", "name": "run-summary", "title": "Run summary", "description": "Summary JSON of a finished run (metrics, SLAs, notes)", "mimeType": "application/json"},
-	{"uriTemplate": "phoenix://runs/{runId}/report", "name": "run-report", "title": "Run report", "description": "Self-contained HTML report of a finished run", "mimeType": "text/html"},
-	{"uriTemplate": "phoenix://docs/{name}", "name": "doc", "title": "Documentation", "description": "Phoenix docs. Available: scenario-format", "mimeType": "text/markdown"},
+	{"uriTemplate": "loadmeter://scenarios/{file}", "name": "scenario", "title": "Scenario JSON", "description": "A scenario file from the workspace, e.g. loadmeter://scenarios/shop-login.json", "mimeType": "application/json"},
+	{"uriTemplate": "loadmeter://runs/{runId}/summary", "name": "run-summary", "title": "Run summary", "description": "Summary JSON of a finished run (metrics, SLAs, notes)", "mimeType": "application/json"},
+	{"uriTemplate": "loadmeter://runs/{runId}/report", "name": "run-report", "title": "Run report", "description": "Self-contained HTML report of a finished run", "mimeType": "text/html"},
+	{"uriTemplate": "loadmeter://docs/{name}", "name": "doc", "title": "Documentation", "description": "Load Meter docs. Available: scenario-format", "mimeType": "text/markdown"},
 }
 
 var scenarioFileRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,100}\.json$`)
@@ -30,11 +30,11 @@ func notFound(uri string) error { return &rpcErr{-32002, "resource not found: " 
 
 func (s *Server) resourcesList() (any, error) {
 	list := []map[string]any{
-		{"uri": "phoenix://docs/scenario-format", "name": "scenario-format", "title": "Scenario format (phoenix/v1)", "mimeType": "text/markdown"},
+		{"uri": "loadmeter://docs/scenario-format", "name": "scenario-format", "title": "Scenario format (loadmeter/v1)", "mimeType": "text/markdown"},
 	}
 	if scs, err := s.Svc.ListScenarios(); err == nil {
 		for _, sc := range scs {
-			r := map[string]any{"uri": "phoenix://scenarios/" + sc.File, "name": sc.File, "mimeType": "application/json"}
+			r := map[string]any{"uri": "loadmeter://scenarios/" + sc.File, "name": sc.File, "mimeType": "application/json"}
 			if sc.Name != "" {
 				r["title"] = sc.Name
 			}
@@ -50,8 +50,8 @@ func (s *Server) resourcesList() (any, error) {
 				break
 			}
 			list = append(list,
-				map[string]any{"uri": "phoenix://runs/" + ri.RunID + "/summary", "name": ri.RunID + " summary", "title": "Summary of " + ri.Scenario, "mimeType": "application/json"},
-				map[string]any{"uri": "phoenix://runs/" + ri.RunID + "/report", "name": ri.RunID + " report", "title": "Report of " + ri.Scenario, "mimeType": "text/html"})
+				map[string]any{"uri": "loadmeter://runs/" + ri.RunID + "/summary", "name": ri.RunID + " summary", "title": "Summary of " + ri.Scenario, "mimeType": "application/json"},
+				map[string]any{"uri": "loadmeter://runs/" + ri.RunID + "/report", "name": ri.RunID + " report", "title": "Report of " + ri.Scenario, "mimeType": "text/html"})
 		}
 	}
 	return map[string]any{"resources": list}, nil
@@ -65,10 +65,10 @@ func (s *Server) resourcesRead(params json.RawMessage) (any, error) {
 		return nil, &rpcErr{-32602, "uri is required"}
 	}
 	u, err := url.Parse(p.URI)
-	if err != nil || u.Scheme != "phoenix" || u.RawQuery != "" || u.Fragment != "" {
+	if err != nil || u.Scheme != "loadmeter" || u.RawQuery != "" || u.Fragment != "" {
 		return nil, &rpcErr{-32602, "unsupported resource uri " + p.URI}
 	}
-	// phoenix://<host>/<path...>; u.Host is the first segment.
+	// loadmeter://<host>/<path...>; u.Host is the first segment.
 	segs := append([]string{u.Host}, strings.Split(strings.Trim(u.EscapedPath(), "/"), "/")...)
 	if segs[len(segs)-1] == "" {
 		segs = segs[:len(segs)-1]

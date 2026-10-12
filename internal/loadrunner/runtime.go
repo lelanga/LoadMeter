@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 // Run-time settings (default.cfg / default.usp). Key names follow commonly
@@ -85,7 +85,7 @@ func (im *importer) loadCfg(name string, data []byte) {
 		case "general", "log", "web", "internet protocol", "browser", "modem speed", "rendezvous",
 			"webrecorder", "pagedownload", "proxy", "cmd", "vu", "thread", "javavm":
 			im.ignoredOnce("cfg:"+strings.ToLower(s.name), "run-time settings ["+s.name+"]", "", fmt.Sprintf("%s:%d", name, s.line),
-				"run-time setting section not mapped (logging, browser emulation, proxy, bandwidth and similar settings have no Phoenix equivalent or are engine-level options)")
+				"run-time setting section not mapped (logging, browser emulation, proxy, bandwidth and similar settings have no Load Meter equivalent or are engine-level options)")
 		default:
 			im.ignoredOnce("cfg:"+strings.ToLower(s.name), "run-time settings ["+s.name+"]", "", fmt.Sprintf("%s:%d", name, s.line), "unrecognized run-time setting section")
 		}
@@ -198,7 +198,7 @@ func (im *importer) applyRuntime() {
 	case "random":
 		w.Pacing = secs(rs.pace1)
 		im.rep.Add("pacing", fmt.Sprintf("random %g-%gs", rs.pace1, rs.pace2), rs.paceLoc, model.Partial,
-			"Phoenix pacing is fixed; the lower bound was used")
+			"Load Meter pacing is fixed; the lower bound was used")
 	case "constafter", "randomafter":
 		th := &model.Think{Min: secs(rs.pace1)}
 		label := fmt.Sprintf("%gs after each iteration", rs.pace1)

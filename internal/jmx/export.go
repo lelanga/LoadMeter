@@ -13,7 +13,7 @@ import (
 	"time"
 	"unicode/utf16"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 // xw is a tiny indenting XML writer; all text and attribute values are escaped.
@@ -115,7 +115,7 @@ func (ex *exporter) fn(s, loc string) string {
 }
 
 // Export writes s as a JMeter 5.6-style .jmx test plan. The report lists how
-// each Phoenix construct was represented.
+// each Load Meter construct was represented.
 func Export(s *model.Scenario) ([]byte, *model.CompatReport, error) {
 	if s == nil {
 		return nil, nil, errors.New("jmx: nil scenario")
@@ -124,7 +124,7 @@ func Export(s *model.Scenario) ([]byte, *model.CompatReport, error) {
 	w := ex.w
 	name := s.Name
 	if name == "" {
-		name = "Phoenix scenario"
+		name = "Load Meter scenario"
 	}
 	w.line(`<?xml version="1.0" encoding="UTF-8"?>`)
 	w.open("jmeterTestPlan", "version", "1.2", "properties", "5.0", "jmeter", "5.6.3")
@@ -264,9 +264,9 @@ func (ex *exporter) planChildren() {
 	}
 	ex.threadGroup()
 	if len(s.Teardown) > 0 {
-		ex.item("teardown", "", "TestPlan/Phoenix teardown", model.Partial,
-			"teardown steps written to a tearDown Thread Group (1 thread, 1 loop, after the test); Phoenix runs teardown per VU")
-		w.element("PostThreadGroup", "PostThreadGroupGui", "Phoenix teardown", true, func() {
+		ex.item("teardown", "", "TestPlan/Load Meter teardown", model.Partial,
+			"teardown steps written to a tearDown Thread Group (1 thread, 1 loop, after the test); Load Meter runs teardown per VU")
+		w.element("PostThreadGroup", "PostThreadGroupGui", "Load Meter teardown", true, func() {
 			ex.tgProps(1, 0, 1, false, 0)
 		}, func() { ex.writeSteps(s.Teardown, "teardown") })
 	}
@@ -377,9 +377,9 @@ func (ex *exporter) threadGroup() {
 		ex.tgProps(threads, ramp, loops, sched, dur)
 	}, func() {
 		if len(s.Setup) > 0 {
-			ex.item("setup", "", "TestPlan/Thread Group/Phoenix setup", model.Partial,
+			ex.item("setup", "", "TestPlan/Thread Group/Load Meter setup", model.Partial,
 				"setup steps written to a Once Only Controller (once per thread, inside the first iteration and its timing)")
-			w.element("OnceOnlyController", "OnceOnlyControllerGui", "Phoenix setup", true, nil,
+			w.element("OnceOnlyController", "OnceOnlyControllerGui", "Load Meter setup", true, nil,
 				func() { ex.writeSteps(s.Setup, "setup") })
 		}
 		ex.writeSteps(s.Steps, "steps")
@@ -562,7 +562,7 @@ func (ex *exporter) step(st model.Step, loc string) {
 	case model.StepTransaction:
 		name := stepName(st, "Transaction")
 		l := loc + "/" + name
-		ex.item("transaction", name, l, model.Supported, "Transaction Controller (timers excluded from its time, like Phoenix think time)"+dis)
+		ex.item("transaction", name, l, model.Supported, "Transaction Controller (timers excluded from its time, like Load Meter think time)"+dis)
 		w.element("TransactionController", "TransactionControllerGui", name, en, func() {
 			w.boolp("TransactionController.includeTimers", false)
 			w.boolp("TransactionController.parent", false)
@@ -609,7 +609,7 @@ var (
 	condVar = regexp.MustCompile(`^\$\{([^{}]+)\}$`)
 )
 
-// exportCond converts the Phoenix condition forms into JMeter If Controller expressions.
+// exportCond converts the Load Meter condition forms into JMeter If Controller expressions.
 func exportCond(c string) (string, bool) {
 	c = strings.TrimSpace(c)
 	if m := condCmp.FindStringSubmatch(c); m != nil {
@@ -875,7 +875,7 @@ func (ex *exporter) extractor(e model.Extractor, loc string) {
 		ex.item("extract.header", e.Name, l, status, joinNote("Regular Expression Extractor on response headers (case-insensitive header name)", note))
 		ex.regexEl(e.Name, "true", hdrPrefix+regexp.QuoteMeta(e.Expr)+hdrSuffix, "$1$", def, jmMatch(e.Match))
 	case model.ExCookie:
-		ex.item("extract.cookie", e.Name, l, model.Partial, joinNote("Regular Expression Extractor on Set-Cookie headers of this response only (Phoenix also falls back to the cookie jar)", note))
+		ex.item("extract.cookie", e.Name, l, model.Partial, joinNote("Regular Expression Extractor on Set-Cookie headers of this response only (Load Meter also falls back to the cookie jar)", note))
 		ex.regexEl(e.Name, "true", cookiePrefix+regexp.QuoteMeta(e.Expr)+cookieSuffix, "$1$", def, jmMatch(e.Match))
 	case model.ExStatus:
 		ex.item("extract.status", e.Name, l, status, joinNote("Regular Expression Extractor on the response code", note))

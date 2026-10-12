@@ -21,14 +21,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/ai"
-	"github.com/lelanga/phoenix/internal/app"
-	"github.com/lelanga/phoenix/internal/assistant"
-	"github.com/lelanga/phoenix/internal/har"
-	"github.com/lelanga/phoenix/internal/results"
-	"github.com/lelanga/phoenix/internal/safety"
-	"github.com/lelanga/phoenix/internal/service"
-	"github.com/lelanga/phoenix/web"
+	"github.com/lelanga/loadmeter/internal/ai"
+	"github.com/lelanga/loadmeter/internal/app"
+	"github.com/lelanga/loadmeter/internal/assistant"
+	"github.com/lelanga/loadmeter/internal/har"
+	"github.com/lelanga/loadmeter/internal/results"
+	"github.com/lelanga/loadmeter/internal/safety"
+	"github.com/lelanga/loadmeter/internal/service"
+	"github.com/lelanga/loadmeter/web"
 )
 
 type Server struct {
@@ -93,9 +93,9 @@ func hostOK(r *http.Request) bool {
 }
 
 func (s *Server) authed(r *http.Request) bool {
-	tok := r.Header.Get("X-Phoenix-Token")
+	tok := r.Header.Get("X-LoadMeter-Token")
 	if tok == "" {
-		if c, err := r.Cookie("phoenix_session"); err == nil {
+		if c, err := r.Cookie("loadmeter_session"); err == nil {
 			tok = c.Value
 		}
 	}
@@ -114,17 +114,17 @@ func (s *Server) Handler() http.Handler {
 		}
 		if t := r.URL.Query().Get("token"); t != "" {
 			if subtle.ConstantTimeCompare([]byte(t), []byte(s.Token)) != 1 {
-				http.Error(w, "invalid token: use the URL printed by 'phoenix serve'", http.StatusUnauthorized)
+				http.Error(w, "invalid token: use the URL printed by 'loadmeter serve'", http.StatusUnauthorized)
 				return
 			}
-			http.SetCookie(w, &http.Cookie{Name: "phoenix_session", Value: s.Token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
+			http.SetCookie(w, &http.Cookie{Name: "loadmeter_session", Value: s.Token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
 			http.Redirect(w, r, "/", http.StatusFound)
 			return
 		}
 		if r.URL.Path == "/" && !s.authed(r) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprint(w, `<!doctype html><meta charset="utf-8"><title>Phoenix</title><body style="font-family:system-ui;padding:40px"><h1>Phoenix Performance</h1><p>Open the link printed in the terminal by <code>phoenix serve</code> (it contains a one-time access token).</p></body>`)
+			fmt.Fprint(w, `<!doctype html><meta charset="utf-8"><title>Load Meter</title><body style="font-family:system-ui;padding:40px"><h1>Load Meter</h1><p>Open the link printed in the terminal by <code>loadmeter serve</code> (it contains a one-time access token).</p></body>`)
 			return
 		}
 		w.Header().Set("Cache-Control", "no-cache")
@@ -139,8 +139,8 @@ func (s *Server) Handler() http.Handler {
 		}
 		// CSRF: state-changing requests need the header token (cookies alone are not enough).
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Phoenix-Token")), []byte(s.Token)) != 1 {
-				writeJSON(w, http.StatusForbidden, map[string]string{"error": "X-Phoenix-Token header required"})
+			if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-LoadMeter-Token")), []byte(s.Token)) != 1 {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "X-LoadMeter-Token header required"})
 				return
 			}
 		}
@@ -202,7 +202,7 @@ func (s *Server) routes(m *http.ServeMux) {
 			writeErr(w, err)
 			return
 		}
-		tmp := filepath.Join(os.TempDir(), "phoenix-put-"+strconv.FormatInt(time.Now().UnixNano(), 10)+".json")
+		tmp := filepath.Join(os.TempDir(), "loadmeter-put-"+strconv.FormatInt(time.Now().UnixNano(), 10)+".json")
 		if err := os.WriteFile(tmp, raw, 0o600); err != nil {
 			writeErr(w, err)
 			return
@@ -461,7 +461,7 @@ func (s *Server) routes(m *http.ServeMux) {
 			return
 		}
 		c := rep.Counts()
-		w.Header().Set("X-Phoenix-Compat", fmt.Sprintf("supported=%d partial=%d unsupported=%d confidence=%s", c["supported"], c["partial"], c["unsupported"], rep.Confidence))
+		w.Header().Set("X-Load Meter-Compat", fmt.Sprintf("supported=%d partial=%d unsupported=%d confidence=%s", c["supported"], c["partial"], c["unsupported"], rep.Confidence))
 		w.Header().Set("Content-Type", "application/xml")
 		w.Header().Set("Content-Disposition", `attachment; filename="`+strings.TrimSuffix(r.PathValue("file"), ".json")+`.jmx"`)
 		w.Write(b)

@@ -9,16 +9,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lelanga/phoenix/internal/app"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/results"
-	"github.com/lelanga/phoenix/internal/safety"
-	"github.com/lelanga/phoenix/internal/service"
+	"github.com/lelanga/loadmeter/internal/app"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/results"
+	"github.com/lelanga/loadmeter/internal/safety"
+	"github.com/lelanga/loadmeter/internal/service"
 )
 
 func newSvc(t *testing.T) *service.Service {
 	t.Helper()
-	t.Setenv("PHOENIX_HOME", t.TempDir())
+	t.Setenv("LOADMETER_HOME", t.TempDir())
 	s, err := service.New(app.Workspace{Dir: filepath.Join(t.TempDir(), "ws")})
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestImportPathRoots(t *testing.T) {
 		filepath.Join(imports, "..", "..", "x"),
 		imports + "-evil/a.har",         // shared prefix, different directory
 		filepath.Join(cwd+"-evil", "a"), // ditto for cwd
-		abs(filepath.Join(os.Getenv("PHOENIX_HOME"), "keys.json")),
+		abs(filepath.Join(os.Getenv("LOADMETER_HOME"), "keys.json")),
 		filepath.Join(s.WS.Dir, "scenarios", "s.json"),
 		filepath.Join(os.Getenv("HOME"), ".ssh", "id_rsa"),
 	}

@@ -20,7 +20,7 @@ async function newScenario(reload) {
   const base = name.value.trim().replace(/\.json$/, '');
   if (!/^[A-Za-z0-9_-]+$/.test(base)) { toast('Use letters, digits, - and _ only.', 'error'); return; }
   const file = base + '.json';
-  const sc = { version: 'phoenix/v1', name: base, variables: { baseUrl: 'http://127.0.0.1:8080' }, defaults: { baseUrl: '${baseUrl}' },
+  const sc = { version: 'loadmeter/v1', name: base, variables: { baseUrl: 'http://127.0.0.1:8080' }, defaults: { baseUrl: '${baseUrl}' },
     steps: [{ type: 'request', name: 'GET /', request: { method: 'GET', url: '/', assert: [{ type: 'status', value: '200' }] } }],
     workload: { executor: 'constant-vus', vus: 1, duration: '30s' } };
   await api('PUT', '/api/scenarios/' + enc(file), sc);
@@ -48,7 +48,7 @@ export async function renderScenarios(root, params, ctx) {
   const importLink = () => h('a', { class: 'btn', href: '#/import' }, 'Import HAR / JMX / LoadRunner');
 
   if (!list.length) {
-    root.append(pageHead('Welcome to Phoenix Performance', 'Lightweight load testing that runs on your computer.'),
+    root.append(pageHead('Welcome to Load Meter', 'Lightweight load testing that runs on your computer.'),
       h('div', { class: 'card welcome' }, h('h2', {}, 'Start with a sample test'),
         h('p', {}, 'No scenarios yet. The sample starts a small mock shop on your machine and runs a ramping load against it. Nothing leaves your computer.'),
         h('div', { class: 'actions' }, sampleBtn(), importLink(), button('New empty scenario', () => newScenario(draw))),

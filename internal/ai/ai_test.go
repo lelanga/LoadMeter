@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 type captured struct {
@@ -67,7 +67,7 @@ func jsonReply(body string) func(int, http.ResponseWriter, *http.Request) {
 
 func setup(t *testing.T) {
 	t.Helper()
-	t.Setenv("PHOENIX_HOME", t.TempDir())
+	t.Setenv("LOADMETER_HOME", t.TempDir())
 }
 
 func cfgFor(kind, baseURL, keyEnv string) Config {
@@ -184,9 +184,9 @@ func TestProviderRequestShapes(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.kind, func(t *testing.T) {
 			setup(t)
-			t.Setenv("PHOENIX_TEST_KEY", key)
+			t.Setenv("LOADMETER_TEST_KEY", key)
 			f := newFake(t, jsonReply(tc.reply))
-			c := NewClient(cfgFor(tc.kind, f.URL, "PHOENIX_TEST_KEY"))
+			c := NewClient(cfgFor(tc.kind, f.URL, "LOADMETER_TEST_KEY"))
 			resp, err := c.Complete(context.Background(), Request{Task: "summarize", System: "SYS prompt", Messages: msgs(), MaxTokens: 321, JSON: true})
 			if err != nil {
 				t.Fatal(err)
@@ -229,9 +229,9 @@ func TestProviderRequestShapes(t *testing.T) {
 
 func TestNoJSONModeOmitsJSONHints(t *testing.T) {
 	setup(t)
-	t.Setenv("PHOENIX_TEST_KEY", "k")
+	t.Setenv("LOADMETER_TEST_KEY", "k")
 	f := newFake(t, jsonReply(`{"choices":[{"message":{"content":"x"}}]}`))
-	c := NewClient(cfgFor("openai", f.URL, "PHOENIX_TEST_KEY"))
+	c := NewClient(cfgFor("openai", f.URL, "LOADMETER_TEST_KEY"))
 	if _, err := c.Complete(context.Background(), Request{Task: "x", Messages: []Message{{Role: "user", Content: "hi"}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -247,10 +247,10 @@ func TestNoJSONModeOmitsJSONHints(t *testing.T) {
 
 func TestMaxTokensClamping(t *testing.T) {
 	setup(t)
-	t.Setenv("PHOENIX_TEST_KEY", "k")
+	t.Setenv("LOADMETER_TEST_KEY", "k")
 	f := newFake(t, jsonReply(`{"choices":[{"message":{"content":"x"}}]}`))
 	run := func(limit, ask int) float64 {
-		c := cfgFor("openai", f.URL, "PHOENIX_TEST_KEY")
+		c := cfgFor("openai", f.URL, "LOADMETER_TEST_KEY")
 		c.Limits.MaxTokensPerCall = limit
 		if _, err := NewClient(c).Complete(context.Background(), Request{Task: "x", MaxTokens: ask, Messages: []Message{{Role: "user", Content: "hi"}}}); err != nil {
 			t.Fatal(err)
@@ -276,9 +276,9 @@ func TestMaxTokensClamping(t *testing.T) {
 
 func TestMaxTokensLimitBelow512IsHonoured(t *testing.T) {
 	setup(t)
-	t.Setenv("PHOENIX_TEST_KEY", "k")
+	t.Setenv("LOADMETER_TEST_KEY", "k")
 	f := newFake(t, jsonReply(`{"choices":[{"message":{"content":"x"}}]}`))
-	c := cfgFor("openai", f.URL, "PHOENIX_TEST_KEY")
+	c := cfgFor("openai", f.URL, "LOADMETER_TEST_KEY")
 	c.Limits.MaxTokensPerCall = 300
 	if _, err := NewClient(c).Complete(context.Background(), Request{Task: "x", MaxTokens: 5000, Messages: []Message{{Role: "user", Content: "hi"}}}); err != nil {
 		t.Fatal(err)
@@ -290,14 +290,14 @@ func TestMaxTokensLimitBelow512IsHonoured(t *testing.T) {
 
 func TestConsentEnforcedBeforeAnyNetworkCall(t *testing.T) {
 	setup(t)
-	t.Setenv("PHOENIX_TEST_KEY", "k")
+	t.Setenv("LOADMETER_TEST_KEY", "k")
 	var calls atomic.Int64
 	rt := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		calls.Add(1)
 		return nil, fmt.Errorf("network blocked in test: %s", r.URL)
 	})
 	mk := func(consent, localOnly bool) *Client {
-		cfg := cfgFor("openai", "https://api.example.invalid", "PHOENIX_TEST_KEY")
+		cfg := cfgFor("openai", "https://api.example.invalid", "LOADMETER_TEST_KEY")
 		cfg.CloudConsent, cfg.LocalOnly = consent, localOnly
 		c := NewClient(cfg)
 		c.HTTP = &http.Client{Transport: rt}
@@ -399,13 +399,13 @@ func TestDisabledAndRoutingErrors(t *testing.T) {
 	}
 	// a provider without a key never touches the network
 	f := newFake(t, jsonReply(`{}`))
-	cfg2 := cfgFor("openai", f.URL, "PHOENIX_UNSET_KEY_VAR")
+	cfg2 := cfgFor("openai", f.URL, "LOADMETER_UNSET_KEY_VAR")
 	if _, err := NewClient(cfg2).Complete(context.Background(), req); err == nil || !strings.Contains(err.Error(), "no API key") || f.hits.Load() != 0 {
 		t.Errorf("no key: %v hits=%d", err, f.hits.Load())
 	}
 	// unknown kind
-	t.Setenv("PHOENIX_TEST_KEY", "k")
-	cfg3 := cfgFor("telepathy", f.URL, "PHOENIX_TEST_KEY")
+	t.Setenv("LOADMETER_TEST_KEY", "k")
+	cfg3 := cfgFor("telepathy", f.URL, "LOADMETER_TEST_KEY")
 	if _, err := NewClient(cfg3).Complete(context.Background(), req); err == nil || !strings.Contains(err.Error(), "unknown provider kind") {
 		t.Errorf("unknown kind: %v", err)
 	}
@@ -413,7 +413,7 @@ func TestDisabledAndRoutingErrors(t *testing.T) {
 
 func TestRetryOn429ThenSuccess(t *testing.T) {
 	setup(t)
-	t.Setenv("PHOENIX_TEST_KEY", "k")
+	t.Setenv("LOADMETER_TEST_KEY", "k")
 	f := newFake(t, func(n int, w http.ResponseWriter, r *http.Request) {
 		if n == 1 {
 			w.Header().Set("Retry-After", "0")
@@ -423,7 +423,7 @@ func TestRetryOn429ThenSuccess(t *testing.T) {
 		io.WriteString(w, `{"choices":[{"message":{"content":"finally"}}]}`)
 	})
 	start := time.Now()
-	resp, err := NewClient(cfgFor("openai", f.URL, "PHOENIX_TEST_KEY")).Complete(context.Background(), Request{Task: "x", Messages: []Message{{Role: "user", Content: "hi"}}})
+	resp, err := NewClient(cfgFor("openai", f.URL, "LOADMETER_TEST_KEY")).Complete(context.Background(), Request{Task: "x", Messages: []Message{{Role: "user", Content: "hi"}}})
 	if err != nil || resp.Text != "finally" {
 		t.Fatalf("%v %+v", err, resp)
 	}
@@ -441,7 +441,7 @@ func TestRetryOn429ThenSuccess(t *testing.T) {
 
 func TestRetryOn5xxAndNoRetryOn4xx(t *testing.T) {
 	setup(t)
-	t.Setenv("PHOENIX_TEST_KEY", "k")
+	t.Setenv("LOADMETER_TEST_KEY", "k")
 	f := newFake(t, func(n int, w http.ResponseWriter, r *http.Request) {
 		if n == 1 {
 			http.Error(w, "upstream down", 503)
@@ -459,7 +459,7 @@ func TestRetryOn5xxAndNoRetryOn4xx(t *testing.T) {
 		http.Error(w, `{"error":"bad key Bearer abcdef1234567890xyz sk-ant-api03 password=hunter2"}`, 401)
 	})
 	start := time.Now()
-	_, err = NewClient(cfgFor("openai", f2.URL, "PHOENIX_TEST_KEY")).Complete(context.Background(), Request{Task: "x", Messages: []Message{{Role: "user", Content: "hi"}}})
+	_, err = NewClient(cfgFor("openai", f2.URL, "LOADMETER_TEST_KEY")).Complete(context.Background(), Request{Task: "x", Messages: []Message{{Role: "user", Content: "hi"}}})
 	if err == nil || !strings.Contains(err.Error(), "HTTP 401") {
 		t.Fatalf("401: %v", err)
 	}
@@ -476,12 +476,12 @@ func TestRetryOn5xxAndNoRetryOn4xx(t *testing.T) {
 
 func TestRetryHonoursContext(t *testing.T) {
 	setup(t)
-	t.Setenv("PHOENIX_TEST_KEY", "k")
+	t.Setenv("LOADMETER_TEST_KEY", "k")
 	f := newFake(t, func(n int, w http.ResponseWriter, r *http.Request) { http.Error(w, "busy", 429) })
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	_, err := NewClient(cfgFor("openai", f.URL, "PHOENIX_TEST_KEY")).Complete(ctx, Request{Task: "x", Messages: []Message{{Role: "user", Content: "hi"}}})
+	_, err := NewClient(cfgFor("openai", f.URL, "LOADMETER_TEST_KEY")).Complete(ctx, Request{Task: "x", Messages: []Message{{Role: "user", Content: "hi"}}})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -492,13 +492,13 @@ func TestRetryHonoursContext(t *testing.T) {
 
 func TestTierFallback(t *testing.T) {
 	setup(t)
-	t.Setenv("PHOENIX_TEST_KEY", "k")
+	t.Setenv("LOADMETER_TEST_KEY", "k")
 	bad := newFake(t, func(n int, w http.ResponseWriter, r *http.Request) { http.Error(w, "nope", 400) })
 	good := newFake(t, jsonReply(`{"choices":[{"message":{"content":"from good"}}]}`))
 	cfg := Config{Enabled: true}
 	cfg.Providers = []ProviderConfig{
-		{ID: "bad", Kind: "openai", BaseURL: bad.URL, Model: "m", KeyEnv: "PHOENIX_TEST_KEY"},
-		{ID: "good", Kind: "openai", BaseURL: good.URL, Model: "m", KeyEnv: "PHOENIX_TEST_KEY"},
+		{ID: "bad", Kind: "openai", BaseURL: bad.URL, Model: "m", KeyEnv: "LOADMETER_TEST_KEY"},
+		{ID: "good", Kind: "openai", BaseURL: good.URL, Model: "m", KeyEnv: "LOADMETER_TEST_KEY"},
 	}
 	cfg.Routing.Light, cfg.Routing.Strong = "bad", "good"
 	c := NewClient(cfg)
@@ -535,9 +535,9 @@ func TestTierFor(t *testing.T) {
 
 func TestBudgetLimits(t *testing.T) {
 	setup(t)
-	t.Setenv("PHOENIX_TEST_KEY", "k")
+	t.Setenv("LOADMETER_TEST_KEY", "k")
 	f := newFake(t, jsonReply(`{"choices":[{"message":{"content":"x"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
-	cfg := cfgFor("openai", f.URL, "PHOENIX_TEST_KEY")
+	cfg := cfgFor("openai", f.URL, "LOADMETER_TEST_KEY")
 	cfg.Limits.MaxCallsPerHour = 1
 	c := NewClient(cfg)
 	req := Request{Task: "x", Messages: []Message{{Role: "user", Content: "hi"}}}
@@ -569,13 +569,13 @@ func TestBudgetLimits(t *testing.T) {
 
 func TestMonthlyBudget(t *testing.T) {
 	setup(t)
-	t.Setenv("PHOENIX_TEST_KEY", "k")
+	t.Setenv("LOADMETER_TEST_KEY", "k")
 	f := newFake(t, jsonReply(`{"choices":[{"message":{"content":"x"}}]}`))
 	old := Activity{Time: time.Now().UTC().AddDate(0, 0, -0), Task: "x", Provider: "p", CostUSD: 25}
 	b, _ := json.Marshal(old)
 	os.MkdirAll(safety.ConfigDir(), 0o700)
 	os.WriteFile(filepath.Join(safety.ConfigDir(), "ai-activity.jsonl"), append(b, '\n'), 0o600)
-	cfg := cfgFor("openai", f.URL, "PHOENIX_TEST_KEY")
+	cfg := cfgFor("openai", f.URL, "LOADMETER_TEST_KEY")
 	cfg.Limits.MonthlyBudgetUSD = 20
 	_, err := NewClient(cfg).Complete(context.Background(), Request{Task: "x", Messages: []Message{{Role: "user", Content: "hi"}}})
 	if err == nil || !strings.Contains(err.Error(), "monthly AI budget of $20.00 reached") || f.hits.Load() != 0 {
@@ -589,9 +589,9 @@ func TestMonthlyBudget(t *testing.T) {
 
 func TestActivityLogFormatAndPermissions(t *testing.T) {
 	setup(t)
-	t.Setenv("PHOENIX_TEST_KEY", "k")
+	t.Setenv("LOADMETER_TEST_KEY", "k")
 	f := newFake(t, jsonReply(`{"choices":[{"message":{"content":"x"}}]}`))
-	c := NewClient(cfgFor("openai", f.URL, "PHOENIX_TEST_KEY"))
+	c := NewClient(cfgFor("openai", f.URL, "LOADMETER_TEST_KEY"))
 	for i := 0; i < 3; i++ {
 		if _, err := c.Complete(context.Background(), Request{Task: fmt.Sprintf("t%d", i), Messages: []Message{{Role: "user", Content: "SECRET PROMPT TEXT"}}}); err != nil {
 			t.Fatal(err)
@@ -757,14 +757,14 @@ func TestConfigPersistence(t *testing.T) {
 
 func TestHasKeyAndKeyPrecedence(t *testing.T) {
 	setup(t)
-	p := ProviderConfig{ID: "kk", Kind: "openai", KeyEnv: "PHOENIX_TEST_KEYENV"}
+	p := ProviderConfig{ID: "kk", Kind: "openai", KeyEnv: "LOADMETER_TEST_KEYENV"}
 	if p.HasKey() {
 		t.Fatal("no key expected")
 	}
 	if !(ProviderConfig{Kind: "ollama"}).HasKey() || !(ProviderConfig{Kind: "mock"}).HasKey() {
 		t.Error("ollama/mock need no key")
 	}
-	t.Setenv("PHOENIX_TEST_KEYENV", "from-env")
+	t.Setenv("LOADMETER_TEST_KEYENV", "from-env")
 	if !p.HasKey() || p.key() != "from-env" {
 		t.Errorf("env key: %q", p.key())
 	}
@@ -777,7 +777,7 @@ func TestHasKeyAndKeyPrecedence(t *testing.T) {
 	if p.key() != "from-env" {
 		t.Error("environment must take precedence over stored keys")
 	}
-	t.Setenv("PHOENIX_TEST_KEYENV", "")
+	t.Setenv("LOADMETER_TEST_KEYENV", "")
 	if p.key() != "stored-key" || !p.HasKey() {
 		t.Errorf("stored key: %q", p.key())
 	}

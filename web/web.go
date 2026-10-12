@@ -1,4 +1,4 @@
-// Package web embeds the static single-page UI served by `phoenix serve`.
+// Package web embeds the static single-page UI served by `loadmeter serve`.
 package web
 
 import "embed"

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 // elem is a JMeter test element paired with the children held in the
@@ -183,7 +183,7 @@ func (im *importer) conv(s, loc string) string {
 	return out
 }
 
-// Import parses a JMeter 5.x .jmx test plan into a Phoenix scenario. The
+// Import parses a JMeter 5.x .jmx test plan into a Load Meter scenario. The
 // returned report lists how every element was handled.
 func Import(r io.Reader, sourceName string) (*model.Scenario, *model.CompatReport, error) {
 	root, err := parseTree(r)
@@ -252,10 +252,10 @@ func (im *importer) importPlan(plan elem) {
 		im.loadArguments(udv, loc)
 	}
 	if n.boolean("TestPlan.serialize_threadgroups", false) {
-		im.note(idx, "\"Run Thread Groups consecutively\" is set; Phoenix imports a single load thread group")
+		im.note(idx, "\"Run Thread Groups consecutively\" is set; Load Meter imports a single load thread group")
 	}
 	if n.boolean("TestPlan.functional_mode", false) {
-		im.note(idx, "functional test mode (save response data) ignored; Phoenix reports replace it")
+		im.note(idx, "functional test mode (save response data) ignored; Load Meter reports replace it")
 	}
 	planScope := &scope{level: "plan"}
 	var tgs, others []elem
@@ -296,7 +296,7 @@ func (im *importer) importPlan(plan elem) {
 		switch {
 		case tc == "SetupThreadGroup":
 			im.add(tc, name, l, model.Partial, fmt.Sprintf(
-				"setUp Thread Group (%s thread(s), runs once before the load in JMeter) mapped to scenario setup steps; Phoenix runs setup once per VU, not once with its own thread pool",
+				"setUp Thread Group (%s thread(s), runs once before the load in JMeter) mapped to scenario setup steps; Load Meter runs setup once per VU, not once with its own thread pool",
 				orDefault(strings.TrimSpace(t.n.str("ThreadGroup.num_threads")), "1")))
 			im.inSetup = true
 			steps := im.buildLevel(t.kids, &scope{parent: planScope, level: "tg"}, l)
@@ -304,7 +304,7 @@ func (im *importer) importPlan(plan elem) {
 			im.sc.Setup = append(im.sc.Setup, steps...)
 		case tc == "PostThreadGroup":
 			im.add(tc, name, l, model.Partial, fmt.Sprintf(
-				"tearDown Thread Group (%s thread(s), runs once after the load in JMeter) mapped to scenario teardown steps; Phoenix runs teardown per VU",
+				"tearDown Thread Group (%s thread(s), runs once after the load in JMeter) mapped to scenario teardown steps; Load Meter runs teardown per VU",
 				orDefault(strings.TrimSpace(t.n.str("ThreadGroup.num_threads")), "1")))
 			im.inSetup = true
 			steps := im.buildLevel(t.kids, &scope{parent: planScope, level: "tg"}, l)
@@ -336,9 +336,9 @@ func (im *importer) importPlan(plan elem) {
 			im.inMainTG = false
 			im.sc.Steps = append(im.sc.Steps, steps...)
 		default:
-			status, why := model.Partial, "only one load thread group per Phoenix scenario"
+			status, why := model.Partial, "only one load thread group per Load Meter scenario"
 			if !isLoadTG(tc) {
-				status, why = model.Unsupported, "thread group type "+tc+" has no Phoenix workload mapping"
+				status, why = model.Unsupported, "thread group type "+tc+" has no Load Meter workload mapping"
 			}
 			note := why + fmt.Sprintf("; %q imported as a disabled group so nothing is lost (split it into its own scenario to run it)", name)
 			im.add(tc, name, l, status, note)
@@ -347,7 +347,7 @@ func (im *importer) importPlan(plan elem) {
 		}
 	}
 	if main < 0 {
-		im.rep.Warnings = append(im.rep.Warnings, "no enabled Thread Group found; workload left at Phoenix defaults")
+		im.rep.Warnings = append(im.rep.Warnings, "no enabled Thread Group found; workload left at Load Meter defaults")
 	}
 	for _, k := range others {
 		l := loc + "/" + nameOf(k.n)
@@ -379,7 +379,7 @@ func (im *importer) finish() {
 		case c > 1:
 			im.note(idx, fmt.Sprintf("applied to %d samplers in scope", c))
 			if im.perIter[idx] {
-				im.escalate(idx, model.Partial, "JMeter updates these once per iteration; Phoenix sets them before each sampler in scope")
+				im.escalate(idx, model.Partial, "JMeter updates these once per iteration; Load Meter sets them before each sampler in scope")
 			}
 		}
 	}
@@ -392,7 +392,7 @@ func (im *importer) finish() {
 	}
 	if !im.cookies {
 		d.DisableCookies = true
-		im.rep.Warnings = append(im.rep.Warnings, "no HTTP Cookie Manager in scope: JMeter ignores cookies, so Phoenix cookies were disabled to match")
+		im.rep.Warnings = append(im.rep.Warnings, "no HTTP Cookie Manager in scope: JMeter ignores cookies, so Load Meter cookies were disabled to match")
 	}
 }
 
@@ -492,13 +492,13 @@ var scriptClasses = map[string]bool{"JSR223PreProcessor": true, "JSR223PostProce
 	"BSFPostProcessor": true, "BSFAssertion": true, "BSFTimer": true, "BSFListener": true}
 
 var unsupportedScoped = map[string]string{
-	"AuthManager":               "HTTP Authorization Manager not supported (Phoenix model has no auth config); add an Authorization header instead",
-	"DNSCacheManager":           "DNS Cache Manager not supported; Phoenix uses the system resolver",
+	"AuthManager":               "HTTP Authorization Manager not supported (Load Meter model has no auth config); add an Authorization header instead",
+	"DNSCacheManager":           "DNS Cache Manager not supported; Load Meter uses the system resolver",
 	"KeystoreConfig":            "Keystore (client certificate) configuration not supported",
 	"CounterConfig":             "Counter config element not supported; consider ${__counter()}",
 	"RandomVariableConfig":      "Random Variable config element not supported; consider ${__randomInt(min,max)}",
 	"JDBCDataSource":            "JDBC connection configuration not supported (non-HTTP)",
-	"HtmlExtractor":             "CSS Selector Extractor not supported (Phoenix has no CSS extractor); rewrite as regex or boundary",
+	"HtmlExtractor":             "CSS Selector Extractor not supported (Load Meter has no CSS extractor); rewrite as regex or boundary",
 	"JMESPathExtractor":         "JMESPath extractor not supported; rewrite as jsonpath",
 	"JMESPathAssertion":         "JMESPath assertion not supported; rewrite as jsonpath",
 	"SizeAssertion":             "Size Assertion not supported",
@@ -516,9 +516,9 @@ var unsupportedScoped = map[string]string{
 	"SampleTimeout":             "Sample Timeout pre-processor not supported; use the request timeout",
 	"JDBCPreProcessor":          "JDBC PreProcessor not supported (non-HTTP)",
 	"JDBCPostProcessor":         "JDBC PostProcessor not supported (non-HTTP)",
-	"ResultAction":              "Result Status Action Handler not supported (Phoenix continues on failure)",
+	"ResultAction":              "Result Status Action Handler not supported (Load Meter continues on failure)",
 	"PreciseThroughputTimer":    "Precise Throughput Timer not supported; use a constant-arrival-rate workload",
-	"SyncTimer":                 "Synchronizing Timer not supported (no rendezvous in Phoenix)",
+	"SyncTimer":                 "Synchronizing Timer not supported (no rendezvous in Load Meter)",
 	"LoginConfig":               "Login Config element not supported",
 }
 
@@ -544,12 +544,12 @@ func (im *importer) scopedElement(k elem, sc *scope, loc string) bool {
 		if isHTTPDefaults(n) {
 			im.httpDefaultsEl(k, sc, loc)
 		} else {
-			im.add(tc, name, loc, model.Unsupported, fmt.Sprintf("config element (guiclass %s) has no Phoenix equivalent", n.Attr("guiclass")))
+			im.add(tc, name, loc, model.Unsupported, fmt.Sprintf("config element (guiclass %s) has no Load Meter equivalent", n.Attr("guiclass")))
 		}
 	case tc == "CookieManager":
 		im.cookieManager(k, sc, loc)
 	case tc == "CacheManager":
-		im.add(tc, name, loc, model.Ignored, "HTTP Cache Manager ignored: Phoenix does not emulate a browser cache (every request is sent)")
+		im.add(tc, name, loc, model.Ignored, "HTTP Cache Manager ignored: Load Meter does not emulate a browser cache (every request is sent)")
 	case tc == "CSVDataSet":
 		im.csv(k, sc, loc)
 	case tc == "Arguments":
@@ -561,7 +561,7 @@ func (im *importer) scopedElement(k elem, sc *scope, loc string) bool {
 		im.add(tc, name, loc, model.Partial, fmt.Sprintf(
 			"Constant Throughput Timer (%s samples/min) not converted: use a constant-arrival-rate workload (iterations/s) instead",
 			strings.TrimSpace(orDefault(n.str("throughput"), n.str("ConstantThroughputTimer.throughput")))))
-		im.manual("Replace Constant Throughput Timer %q with a Phoenix arrival-rate executor", name)
+		im.manual("Replace Constant Throughput Timer %q with a Load Meter arrival-rate executor", name)
 	case tc == "ResponseAssertion", tc == "JSONPathAssertion", tc == "DurationAssertion":
 		im.assertion(k, sc, loc)
 	case tc == "RegexExtractor", tc == "JSONPostProcessor", tc == "BoundaryExtractor", tc == "XPathExtractor", tc == "XPath2Extractor":
@@ -573,12 +573,12 @@ func (im *importer) scopedElement(k elem, sc *scope, loc string) bool {
 		im.add(tc, name, loc, model.Unsupported, note)
 		im.manual("Re-implement %s %q at %s without scripting: %s", tc, name, loc, note)
 	case tc == "DebugPostProcessor":
-		im.add(tc, name, loc, model.Ignored, "debug element; Phoenix debug output replaces it")
+		im.add(tc, name, loc, model.Ignored, "debug element; Load Meter debug output replaces it")
 	case unsupportedScoped[tc] != "":
 		im.add(tc, name, loc, model.Unsupported, unsupportedScoped[tc])
 		im.manual("%s %q at %s: %s", tc, name, loc, unsupportedScoped[tc])
 	case listenerClasses[tc] || strings.HasSuffix(tc, "ResultCollector") || strings.HasSuffix(tc, "Visualizer"):
-		im.add(tc, name, loc, model.Ignored, "UI/listener element; Phoenix reports replace it")
+		im.add(tc, name, loc, model.Ignored, "UI/listener element; Load Meter reports replace it")
 	default:
 		return false
 	}
@@ -599,7 +599,7 @@ func scriptNote(n *node) string {
 			lang = "unknown language"
 		}
 	}
-	note := fmt.Sprintf("%s script (%s) is never executed by Phoenix", tc, lang)
+	note := fmt.Sprintf("%s script (%s) is never executed by Load Meter", tc, lang)
 	if f := strings.TrimSpace(n.str("filename")); f != "" {
 		note += fmt.Sprintf("; script file %q", f)
 	}
@@ -738,10 +738,10 @@ func (im *importer) httpDefaultsEl(k elem, sc *scope, loc string) {
 		im.note(idx, fmt.Sprintf("default path %q used only for samplers with an empty path (as in JMeter)", d.path))
 	}
 	if args, _ := n.elemProp("HTTPsampler.Arguments").coll("Arguments.arguments"); len(args) > 0 {
-		im.escalate(idx, model.Partial, fmt.Sprintf("%d default parameter(s) not applied (Phoenix defaults have no parameters)", len(args)))
+		im.escalate(idx, model.Partial, fmt.Sprintf("%d default parameter(s) not applied (Load Meter defaults have no parameters)", len(args)))
 	}
 	if n.boolean("HTTPSampler.image_parser", false) {
-		im.escalate(idx, model.Partial, "\"Retrieve all embedded resources\" not supported: Phoenix does not download page resources")
+		im.escalate(idx, model.Partial, "\"Retrieve all embedded resources\" not supported: Load Meter does not download page resources")
 	}
 	if strings.TrimSpace(n.str("HTTPSampler.proxyHost")) != "" {
 		im.escalate(idx, model.Partial, "proxy settings not imported")
@@ -750,21 +750,21 @@ func (im *importer) httpDefaultsEl(k elem, sc *scope, loc string) {
 
 func (im *importer) timeoutNote(idx int, conn, resp int64) {
 	if conn > 0 {
-		im.escalate(idx, model.Partial, fmt.Sprintf("connect timeout (%dms) and response timeout (%dms) combined into one overall Phoenix request timeout", conn, max(resp, 0)))
+		im.escalate(idx, model.Partial, fmt.Sprintf("connect timeout (%dms) and response timeout (%dms) combined into one overall Load Meter request timeout", conn, max(resp, 0)))
 	} else {
-		im.note(idx, "response timeout (JMeter: socket read timeout) mapped to the overall Phoenix request timeout")
+		im.note(idx, "response timeout (JMeter: socket read timeout) mapped to the overall Load Meter request timeout")
 	}
 }
 
 func (im *importer) cookieManager(k elem, sc *scope, loc string) {
 	n := k.n
 	idx := im.add("CookieManager", nameOf(n), loc, model.Supported,
-		"cookies enabled: Phoenix keeps an RFC 6265 cookie jar per VU (Go net/http/cookiejar)")
+		"cookies enabled: Load Meter keeps an RFC 6265 cookie jar per VU (Go net/http/cookiejar)")
 	if p := strings.TrimSpace(n.str("CookieManager.policy")); p != "" && p != "standard" && p != "default" {
 		im.escalate(idx, model.Partial, fmt.Sprintf("JMeter cookie policy %q not reproduced", p))
 	}
 	if n.boolean("CookieManager.clearEachIteration", false) {
-		im.escalate(idx, model.Partial, "\"Clear cookies each iteration\" not represented in the model; verify Phoenix jar lifetime")
+		im.escalate(idx, model.Partial, "\"Clear cookies each iteration\" not represented in the model; verify Load Meter jar lifetime")
 	}
 	if cs, _ := n.coll("CookieManager.cookies"); len(cs) > 0 {
 		im.escalate(idx, model.Partial, fmt.Sprintf("%d predefined cookie(s) not imported (model has no initial cookies); send them as a Cookie header", len(cs)))
@@ -774,7 +774,7 @@ func (im *importer) cookieManager(k elem, sc *scope, loc string) {
 		return
 	}
 	if sc.level != "plan" && sc.level != "tg" {
-		im.note(idx, "Phoenix cookie handling is scenario-wide (JMeter scoped it to this controller)")
+		im.note(idx, "Load Meter cookie handling is scenario-wide (JMeter scoped it to this controller)")
 	}
 	im.cookies = true
 }
@@ -821,7 +821,7 @@ func (im *importer) csv(k elem, sc *scope, loc string) {
 		ds.OnExhaust = "stop"
 	default:
 		ds.OnExhaust = "stop"
-		im.escalate(idx, model.Partial, "recycle=false, stopThread=false: JMeter continues with <EOF> values; Phoenix stops the VU instead")
+		im.escalate(idx, model.Partial, "recycle=false, stopThread=false: JMeter continues with <EOF> values; Load Meter stops the VU instead")
 	}
 	switch share := strings.TrimSpace(n.str("shareMode")); share {
 	case "", "shareMode.all":
@@ -831,22 +831,22 @@ func (im *importer) csv(k elem, sc *scope, loc string) {
 		im.note(idx, "shared per thread group: equivalent to all-threads because one thread group is imported")
 	case "shareMode.thread":
 		ds.Mode = "per-vu"
-		im.escalate(idx, model.Partial, "shareMode.thread: each JMeter thread reads the whole file from line 1; Phoenix per-vu mode assigns row = VU index")
+		im.escalate(idx, model.Partial, "shareMode.thread: each JMeter thread reads the whole file from line 1; Load Meter per-vu mode assigns row = VU index")
 	default:
 		ds.Mode = "sequential"
 		im.escalate(idx, model.Partial, fmt.Sprintf("custom share identifier %q mapped to one shared sequential cursor", share))
 	}
 	if enc := strings.TrimSpace(n.str("fileEncoding")); enc != "" && !strings.EqualFold(strings.ReplaceAll(enc, "-", ""), "utf8") {
-		im.escalate(idx, model.Partial, fmt.Sprintf("file encoding %s: Phoenix reads CSV as UTF-8", enc))
+		im.escalate(idx, model.Partial, fmt.Sprintf("file encoding %s: Load Meter reads CSV as UTF-8", enc))
 	}
 	if !path.IsAbs(file) && !strings.Contains(file, "${") {
-		im.note(idx, "relative path: JMeter resolves it against the .jmx directory, Phoenix against the scenario file")
+		im.note(idx, "relative path: JMeter resolves it against the .jmx directory, Load Meter against the scenario file")
 	}
 	if sc.level != "plan" && sc.level != "tg" {
-		im.note(idx, "Phoenix data sources are scenario-wide")
+		im.note(idx, "Load Meter data sources are scenario-wide")
 	}
 	if im.loopDepth > 0 {
-		im.escalate(idx, model.Partial, "inside a Loop Controller: JMeter reads a new line on every loop pass; Phoenix advances once per iteration")
+		im.escalate(idx, model.Partial, "inside a Loop Controller: JMeter reads a new line on every loop pass; Load Meter advances once per iteration")
 	}
 	if im.container != "" {
 		im.note(idx, "not added: inside a non-executed container")
@@ -923,9 +923,9 @@ func sampleScope(n *node) (string, string) {
 	case "", "parent":
 		return model.Supported, ""
 	case "all", "children":
-		return model.Partial, fmt.Sprintf("applies to %q samples in JMeter (incl. redirect/embedded sub-samples); Phoenix applies it to the final response only", s)
+		return model.Partial, fmt.Sprintf("applies to %q samples in JMeter (incl. redirect/embedded sub-samples); Load Meter applies it to the final response only", s)
 	case "variable":
-		return model.Unsupported, fmt.Sprintf("applies to the content of variable %q, which Phoenix does not support", n.str("Scope.variable"))
+		return model.Unsupported, fmt.Sprintf("applies to the content of variable %q, which Load Meter does not support", n.str("Scope.variable"))
 	default:
 		return model.Partial, fmt.Sprintf("unknown scope %q treated as main sample", s)
 	}
@@ -996,7 +996,7 @@ func (im *importer) responseAssertion(n *node, loc string) ([]model.Assertion, s
 	}
 	status, note := model.Supported, ""
 	if n.boolean("Assertion.assume_success", false) {
-		status, note = model.Partial, "\"Ignore Status\" is set: JMeter ignores the HTTP status for pass/fail; Phoenix fails >= 400 responses unless a status assertion is present"
+		status, note = model.Partial, "\"Ignore Status\" is set: JMeter ignores the HTTP status for pass/fail; Load Meter fails >= 400 responses unless a status assertion is present"
 	}
 	desc := mode
 	if not {
@@ -1051,13 +1051,13 @@ func (im *importer) responseAssertion(n *node, loc string) ([]model.Assertion, s
 					as = append(as, model.Assertion{Type: model.AsNotContains, Value: p})
 					continue
 				}
-				return unsup("negated regex/equality has no Phoenix assertion type")
+				return unsup("negated regex/equality has no Load Meter assertion type")
 			}
 		default:
-			return unsup("NOT combined with OR has no Phoenix equivalent")
+			return unsup("NOT combined with OR has no Load Meter equivalent")
 		}
 		if mode == "contains" || mode == "matches" {
-			note = joinNote(note, "JMeter uses Perl5 (ORO) regex, Phoenix uses Go RE2; syntax checked to compile")
+			note = joinNote(note, "JMeter uses Perl5 (ORO) regex, Load Meter uses Go RE2; syntax checked to compile")
 		}
 		return as, status, note
 	case "Assertion.response_code":
@@ -1088,7 +1088,7 @@ func (im *importer) responseAssertion(n *node, loc string) ([]model.Assertion, s
 		}
 		if classes > 0 && len(vals) > 1 {
 			status = model.Partial
-			note = joinNote(note, "list mixes status classes and codes; verify Phoenix accepts it")
+			note = joinNote(note, "list mixes status classes and codes; verify Load Meter accepts it")
 		}
 		return []model.Assertion{{Type: model.AsStatus, Value: strings.Join(vals, ",")}}, status, note
 	case "Assertion.response_headers":
@@ -1103,7 +1103,7 @@ func (im *importer) responseAssertion(n *node, loc string) ([]model.Assertion, s
 			}
 			as = append(as, model.Assertion{Type: model.AsHeader, Expr: strings.TrimSpace(p[:i]), Value: strings.TrimSpace(p[i+1:])})
 		}
-		return as, model.Partial, joinNote(note, "JMeter matches the raw header block (case-sensitive); mapped to a Phoenix header name/contains-value check")
+		return as, model.Partial, joinNote(note, "JMeter matches the raw header block (case-sensitive); mapped to a Load Meter header name/contains-value check")
 	}
 	return unsup("this test field is not supported")
 }
@@ -1123,20 +1123,20 @@ func (im *importer) jsonPathAssertion(n *node, loc string) ([]model.Assertion, s
 		return nil, model.Unsupported, "empty JSON path"
 	}
 	if n.boolean("INVERT", false) {
-		return nil, model.Unsupported, "inverted JSON assertion has no Phoenix equivalent"
+		return nil, model.Unsupported, "inverted JSON assertion has no Load Meter equivalent"
 	}
 	if n.boolean("EXPECT_NULL", false) {
-		return nil, model.Unsupported, "\"expect null\" has no Phoenix equivalent"
+		return nil, model.Unsupported, "\"expect null\" has no Load Meter equivalent"
 	}
 	a := model.Assertion{Type: model.AsJSONPath, Expr: im.conv(p, loc)}
 	status, note := model.Supported, ""
 	if n.boolean("JSONVALIDATION", false) {
 		exp := n.str("EXPECTED_VALUE")
 		if n.boolean("ISREGEX", true) && !isLiteralPattern(exp) {
-			return nil, model.Unsupported, fmt.Sprintf("expected value %q is a regular expression; Phoenix compares for equality", exp)
+			return nil, model.Unsupported, fmt.Sprintf("expected value %q is a regular expression; Load Meter compares for equality", exp)
 		}
 		if exp == "" {
-			status, note = model.Partial, "JMeter expects an empty value; Phoenix only checks that the path exists"
+			status, note = model.Partial, "JMeter expects an empty value; Load Meter only checks that the path exists"
 		}
 		a.Value = im.conv(exp, loc)
 	}
@@ -1232,13 +1232,13 @@ func (im *importer) regexExtractor(n *node, loc string) ([]model.Extractor, stri
 	}
 	if ex.Group == 0 {
 		if c, err := regexp.Compile(varRefRE.ReplaceAllString(re, "x")); err == nil && c.NumSubexp() > 0 {
-			esc(model.Partial, "template $0$ (whole match) with capture groups: Phoenix group 0 means \"group 1 if the regex has groups\"")
+			esc(model.Partial, "template $0$ (whole match) with capture groups: Load Meter group 0 means \"group 1 if the regex has groups\"")
 		}
 	}
 	switch field := strings.TrimSpace(n.str("RegexExtractor.useHeaders")); field {
 	case "", "false":
 	case "unescaped":
-		esc(model.Partial, "JMeter HTML-unescapes the body before matching; Phoenix matches the raw body")
+		esc(model.Partial, "JMeter HTML-unescapes the body before matching; Load Meter matches the raw body")
 	case "true":
 		switch {
 		case strings.HasPrefix(re, cookiePrefix) && strings.HasSuffix(re, cookieSuffix):
@@ -1252,7 +1252,7 @@ func (im *importer) regexExtractor(n *node, loc string) ([]model.Extractor, stri
 				return []model.Extractor{ex}, status, note
 			}
 		}
-		return nil, model.Unsupported, joinNote(note, fmt.Sprintf("regex %q on response headers: Phoenix regex extractors read the body only; use a header extractor", re))
+		return nil, model.Unsupported, joinNote(note, fmt.Sprintf("regex %q on response headers: Load Meter regex extractors read the body only; use a header extractor", re))
 	case "code":
 		switch re {
 		case "(.*)", "(.+)", `(\d+)`, `(\d{3})`, `(\d\d\d)`:
@@ -1261,7 +1261,7 @@ func (im *importer) regexExtractor(n *node, loc string) ([]model.Extractor, stri
 		}
 		return nil, model.Unsupported, joinNote(note, fmt.Sprintf("regex %q on the response code is not supported", re))
 	default:
-		return nil, model.Unsupported, joinNote(note, fmt.Sprintf("regex on %q is not supported (Phoenix extracts from the body)", field))
+		return nil, model.Unsupported, joinNote(note, fmt.Sprintf("regex on %q is not supported (Load Meter extracts from the body)", field))
 	}
 	if err := re2Error(re); err != nil {
 		return nil, model.Unsupported, joinNote(note, "regex is not RE2-compatible (Go regexp has no backreferences/lookaround): "+err.Error())
@@ -1312,7 +1312,7 @@ func (im *importer) jsonExtractor(n *node, loc string) ([]model.Extractor, strin
 		e := exprs[i]
 		if strings.Contains(e, "?(") || strings.Contains(e, "()") {
 			status = model.Partial
-			note = joinNote(note, fmt.Sprintf("%q uses Jayway JSONPath filters/functions; verify Phoenix JSONPath supports them", e))
+			note = joinNote(note, fmt.Sprintf("%q uses Jayway JSONPath filters/functions; verify Load Meter JSONPath supports them", e))
 		}
 		out = append(out, model.Extractor{Name: nm, Type: model.ExJSONPath, Expr: im.conv(e, loc), Match: m, Default: im.conv(def, loc)})
 	}
@@ -1332,7 +1332,7 @@ func (im *importer) boundaryExtractor(n *node, loc string) ([]model.Extractor, s
 		return nil, model.Unsupported, "no reference name"
 	}
 	if f := strings.TrimSpace(n.str("BoundaryExtractor.useHeaders")); f != "" && f != "false" {
-		return nil, model.Unsupported, fmt.Sprintf("boundary extraction from %q is not supported (Phoenix extracts from the body)", f)
+		return nil, model.Unsupported, fmt.Sprintf("boundary extraction from %q is not supported (Load Meter extracts from the body)", f)
 	}
 	m, status, note := matchNo(n.str("BoundaryExtractor.match_number"))
 	ex := model.Extractor{Name: refname, Type: model.ExBoundary, Left: im.conv(n.str("BoundaryExtractor.lboundary"), loc),
@@ -1356,7 +1356,7 @@ func (im *importer) xpathExtractor(n *node, loc string) ([]model.Extractor, stri
 	}
 	m, _, mnote := matchNo(n.str(pre + "matchNumber"))
 	ex := model.Extractor{Name: refname, Type: model.ExXPath, Expr: im.conv(q, loc), Match: m, Default: im.conv(n.str(pre+"default"), loc)}
-	note := joinNote("XPath support differs (JMeter: Xalan XPath 1 / Saxon XPath 2-3 with tolerant HTML parsing); verify the expression in Phoenix", mnote)
+	note := joinNote("XPath support differs (JMeter: Xalan XPath 1 / Saxon XPath 2-3 with tolerant HTML parsing); verify the expression in Load Meter", mnote)
 	if strings.TrimSpace(n.str(pre+"namespaces")) != "" || n.boolean(pre+"namespace", false) {
 		note = joinNote(note, "namespace configuration not imported")
 	}
@@ -1401,17 +1401,17 @@ func (im *importer) execElement(k elem, sc *scope, loc string) []model.Step {
 	case tc == "TransactionController":
 		idx := im.add(tc, name, loc, model.Supported, "")
 		if n.boolean("TransactionController.includeTimers", false) {
-			im.escalate(idx, model.Partial, "\"include timers\" is set: JMeter counts timer delays in the transaction time, Phoenix excludes think time")
+			im.escalate(idx, model.Partial, "\"include timers\" is set: JMeter counts timer delays in the transaction time, Load Meter excludes think time")
 		}
 		if n.boolean("TransactionController.parent", false) {
-			im.note(idx, "\"generate parent sample\": Phoenix reports the transaction and its requests separately")
+			im.note(idx, "\"generate parent sample\": Load Meter reports the transaction and its requests separately")
 		}
 		return []model.Step{{Type: model.StepTransaction, Name: name, Comment: comment(n), Steps: im.buildLevel(k.kids, ctrl, loc)}}
 	case tc == "GenericController" || tc == "RecordingController":
 		im.add(tc, name, loc, model.Supported, "mapped to a group step")
 		return []model.Step{{Type: model.StepGroup, Name: name, Comment: comment(n), Steps: im.buildLevel(k.kids, ctrl, loc)}}
 	case tc == "CriticalSectionController":
-		im.add(tc, name, loc, model.Partial, fmt.Sprintf("Critical Section (lock %q) mapped to a plain group: Phoenix has no cross-VU locking", n.str("CriticalSectionController.lockName")))
+		im.add(tc, name, loc, model.Partial, fmt.Sprintf("Critical Section (lock %q) mapped to a plain group: Load Meter has no cross-VU locking", n.str("CriticalSectionController.lockName")))
 		return []model.Step{{Type: model.StepGroup, Name: name, Comment: comment(n), Steps: im.buildLevel(k.kids, ctrl, loc)}}
 	case tc == "LoopController":
 		return im.loopController(k, sc, loc)
@@ -1423,20 +1423,20 @@ func (im *importer) execElement(k elem, sc *scope, loc string) []model.Step {
 			return []model.Step{{Type: model.StepGroup, Name: name, Comment: comment(n), Steps: im.buildLevel(k.kids, ctrl, loc)}}
 		}
 		im.add(tc, name, loc, model.Partial,
-			"children moved to scenario setup: Phoenix runs setup once per VU before the first iteration; JMeter runs them once per thread at this position of the first iteration")
+			"children moved to scenario setup: Load Meter runs setup once per VU before the first iteration; JMeter runs them once per thread at this position of the first iteration")
 		im.sc.Setup = append(im.sc.Setup, im.buildLevel(k.kids, ctrl, loc)...)
 		return nil
 	case unsupportedControllers[tc] != "":
-		note := unsupportedControllers[tc] + " has no Phoenix equivalent" + controllerDetail(n) + "; children kept in a disabled group so nothing is lost"
+		note := unsupportedControllers[tc] + " has no Load Meter equivalent" + controllerDetail(n) + "; children kept in a disabled group so nothing is lost"
 		im.add(tc, name, loc, model.Unsupported, note)
 		im.manual("Rework %s %q at %s: %s", unsupportedControllers[tc], name, loc, note)
 		return []model.Step{im.disabledGroup(k, sc, loc, note)}
 	case tc == "DebugSampler":
-		im.add(tc, name, loc, model.Ignored, "debug element; Phoenix debug output replaces it")
+		im.add(tc, name, loc, model.Ignored, "debug element; Load Meter debug output replaces it")
 		im.drain(k.kids, sc, loc, name)
 		return nil
 	case nonHTTPSamplers[tc]:
-		note := "non-HTTP sampler: Phoenix only executes HTTP requests; never executed"
+		note := "non-HTTP sampler: Load Meter only executes HTTP requests; never executed"
 		if strings.HasPrefix(tc, "JSR223") || strings.HasPrefix(tc, "BeanShell") || strings.HasPrefix(tc, "BSF") {
 			note = scriptNote(n)
 		}
@@ -1455,7 +1455,7 @@ func (im *importer) execElement(k elem, sc *scope, loc string) []model.Step {
 	}
 	note += "; not executed"
 	im.add(tc, name, loc, model.Unsupported, note)
-	im.manual("Unknown element %s %q at %s: no Phoenix mapping", tc, name, loc)
+	im.manual("Unknown element %s %q at %s: no Load Meter mapping", tc, name, loc)
 	if len(k.kids) > 0 {
 		return []model.Step{im.disabledGroup(k, sc, loc, note)}
 	}
@@ -1495,7 +1495,7 @@ func (im *importer) loopController(k elem, sc *scope, loc string) []model.Step {
 	im.loopDepth--
 	switch {
 	case ok && cnt < 0:
-		im.escalate(idx, model.Partial, "infinite loop (-1): Phoenix has no unbounded loop step; children run once per iteration in a group")
+		im.escalate(idx, model.Partial, "infinite loop (-1): Load Meter has no unbounded loop step; children run once per iteration in a group")
 		return []model.Step{{Type: model.StepGroup, Name: name, Comment: comment(n), Steps: steps}}
 	case !ok || cnt < 1:
 		im.escalate(idx, model.Partial, fmt.Sprintf("loop count %q not usable; imported with count 1", raw))
@@ -1549,7 +1549,7 @@ func (im *importer) ifController(k elem, sc *scope, loc string) []model.Step {
 	if !ok {
 		why := fmt.Sprintf("condition %q is not a simple \"${var}\" ==/!= \"value\" comparison; children kept in a disabled group", raw)
 		im.add("IfController", name, loc, model.Unsupported, why)
-		im.manual("Rewrite If Controller %q at %s as a Phoenix condition: %s", name, loc, raw)
+		im.manual("Rewrite If Controller %q at %s as a Load Meter condition: %s", name, loc, raw)
 		return []model.Step{im.disabledGroup(k, sc, loc, why)}
 	}
 	idx := im.add("IfController", name, loc, model.Supported, fmt.Sprintf("condition %q -> %q", raw, cond))
@@ -1557,7 +1557,7 @@ func (im *importer) ifController(k elem, sc *scope, loc string) []model.Step {
 		im.escalate(idx, model.Partial, note)
 	}
 	if n.boolean("IfController.evaluateAll", false) {
-		im.escalate(idx, model.Partial, "\"evaluate for all children\" not supported: Phoenix evaluates once")
+		im.escalate(idx, model.Partial, "\"evaluate for all children\" not supported: Load Meter evaluates once")
 	}
 	return []model.Step{{Type: model.StepIf, Name: name, Cond: cond, Comment: comment(n),
 		Steps: im.buildLevel(k.kids, &scope{parent: sc, level: "ctrl"}, loc)}}
@@ -1773,7 +1773,7 @@ func (im *importer) buildRequest(n *node, sc *scope, loc string, idx int) *model
 			req.Multipart = append(req.Multipart, model.Part{Name: im.conv(f.param, loc), File: im.conv(f.path, loc), ContentType: f.mime})
 		}
 		if len(files) > 0 {
-			im.note(idx, "file paths: JMeter resolves relative paths against its working/base directory, Phoenix against the scenario file")
+			im.note(idx, "file paths: JMeter resolves relative paths against its working/base directory, Load Meter against the scenario file")
 		}
 	case len(args) > 0 && queryMethod(method):
 		var qs []string
@@ -1857,7 +1857,7 @@ func (im *importer) buildRequest(n *node, sc *scope, loc string, idx int) *model
 	}
 
 	if n.boolean("HTTPSampler.image_parser", false) {
-		im.escalate(idx, model.Partial, "\"Retrieve all embedded resources\" not supported: Phoenix does not download page resources")
+		im.escalate(idx, model.Partial, "\"Retrieve all embedded resources\" not supported: Load Meter does not download page resources")
 	}
 	if g("ipSource") != "" {
 		im.escalate(idx, model.Partial, "source IP spoofing (ipSource) not supported")
@@ -1866,10 +1866,10 @@ func (im *importer) buildRequest(n *node, sc *scope, loc string, idx int) *model
 		im.escalate(idx, model.Partial, "per-sampler proxy not supported")
 	}
 	if v, ok := n.prop("HTTPSampler.use_keepalive"); ok && strings.TrimSpace(v) == "false" {
-		im.escalate(idx, model.Partial, "keep-alive disabled in JMeter (new connection per request); Phoenix reuses connections")
+		im.escalate(idx, model.Partial, "keep-alive disabled in JMeter (new connection per request); Load Meter reuses connections")
 	}
 	if enc := g("contentEncoding"); enc != "" && !strings.EqualFold(strings.ReplaceAll(enc, "-", ""), "utf8") {
-		im.escalate(idx, model.Partial, fmt.Sprintf("content encoding %s not applied: Phoenix sends bodies as given (UTF-8)", enc))
+		im.escalate(idx, model.Partial, fmt.Sprintf("content encoding %s not applied: Load Meter sends bodies as given (UTF-8)", enc))
 	}
 	return req
 }
@@ -1932,15 +1932,15 @@ func (im *importer) tgWorkload(n *node, loc string) (model.Workload, []string, b
 		delay, _ = im.num(n.str("ThreadGroup.delay"), loc, &notes)
 	}
 	if delay > 0 {
-		notes = append(notes, fmt.Sprintf("startup delay of %gs not represented; Phoenix starts immediately", delay))
+		notes = append(notes, fmt.Sprintf("startup delay of %gs not represented; Load Meter starts immediately", delay))
 	}
 	switch e := strings.TrimSpace(n.str("ThreadGroup.on_sample_error")); e {
 	case "", "continue":
 	default:
-		notes = append(notes, fmt.Sprintf("on-sampler-error action %q not supported (Phoenix continues)", e))
+		notes = append(notes, fmt.Sprintf("on-sampler-error action %q not supported (Load Meter continues)", e))
 	}
 	if !n.boolean("ThreadGroup.same_user_on_next_iteration", true) {
-		info = append(info, "\"same user on each iteration\" is off: JMeter resets cookies/cache per iteration; verify Phoenix jar lifetime")
+		info = append(info, "\"same user on each iteration\" is off: JMeter resets cookies/cache per iteration; verify Load Meter jar lifetime")
 	}
 	N := int(math.Round(threads))
 	w := model.Workload{}
@@ -1960,7 +1960,7 @@ func (im *importer) tgWorkload(n *node, loc string) (model.Workload, []string, b
 	switch {
 	case dur > 0:
 		if loops > 0 {
-			notes = append(notes, fmt.Sprintf("JMeter stops after %g loop(s) or %gs, whichever comes first; Phoenix uses the duration only", loops, dur))
+			notes = append(notes, fmt.Sprintf("JMeter stops after %g loop(s) or %gs, whichever comes first; Load Meter uses the duration only", loops, dur))
 		}
 		rampStages(dur)
 	case loops > 0:
@@ -1969,7 +1969,7 @@ func (im *importer) tgWorkload(n *node, loc string) (model.Workload, []string, b
 			notes = append(notes, fmt.Sprintf("ramp-up of %gs not representable with per-vu-iterations: all VUs start together", ramp))
 		}
 	default:
-		notes = append(notes, fmt.Sprintf("infinite loop without scheduler: JMeter runs until stopped; Phoenix needs a bound, defaulted to %s", defaultUnboundedDuration))
+		notes = append(notes, fmt.Sprintf("infinite loop without scheduler: JMeter runs until stopped; Load Meter needs a bound, defaulted to %s", defaultUnboundedDuration))
 		rampStages(defaultUnboundedDuration.Seconds())
 	}
 	return w, append(notes, info...), len(notes) > 0

@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 var jpSubset = regexp.MustCompile(`^\$((\.[A-Za-z_$][\w$-]*)|(\[\d+\])|(\['[^']*'\])|(\["[^"]*"\]))*$`)
@@ -15,7 +15,7 @@ var jpSubset = regexp.MustCompile(`^\$((\.[A-Za-z_$][\w$-]*)|(\[\d+\])|(\['[^']*
 func (e *exporter) body() string {
 	s := e.s
 	e.b.Reset()
-	e.line("let V = null; // per-VU variables (persist across iterations, like Phoenix)")
+	e.line("let V = null; // per-VU variables (persist across iterations, like Load Meter)")
 	e.line("")
 	e.line("export default function () {")
 	e.ind++
@@ -33,7 +33,7 @@ func (e *exporter) body() string {
 	if len(s.Setup) > 0 {
 		e.line("if (_first) {")
 		e.ind++
-		e.line("// setup (runs once per VU, as in Phoenix)")
+		e.line("// setup (runs once per VU, as in Load Meter)")
 		e.steps(s.Setup, "setup")
 		e.ind--
 		e.line("}")

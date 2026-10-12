@@ -67,7 +67,7 @@ func generateCert(dir, certPath, keyPath string) error {
 	host, _ := os.Hostname()
 	tpl := &x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "phoenix-agent " + host, Organization: []string{"Phoenix Performance agent (self-signed, pinned by fingerprint)"}},
+		Subject:               pkix.Name{CommonName: "loadmeter-agent " + host, Organization: []string{"Load Meter agent (self-signed, pinned by fingerprint)"}},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().AddDate(10, 0, 0),
 		KeyUsage:              x509.KeyUsageDigitalSignature,

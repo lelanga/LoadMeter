@@ -1,4 +1,4 @@
-// Package model defines Phoenix's canonical scenario representation (IR).
+// Package model defines Load Meter's canonical scenario representation (IR).
 // Every importer (HAR, JMX, LoadRunner) produces a Scenario and every exporter
 // consumes one; the engine executes it. The JSON form is the on-disk format.
 package model
@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const SchemaVersion = "phoenix/v1"
+const SchemaVersion = "loadmeter/v1"
 
 // Duration is a time.Duration that marshals as a Go duration string ("30s").
 type Duration time.Duration

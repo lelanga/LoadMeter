@@ -73,7 +73,7 @@ export async function renderAI(root) {
   }
 
   root.append(pageHead('AI Assistant', 'Describe what you want; the assistant proposes a plan. Nothing risky runs until you confirm.'),
-    configured ? null : note('warn', h('strong', {}, 'AI is not configured. '), 'Phoenix works fully without AI: you can import, edit, validate and run tests yourself. To use the assistant, ',
+    configured ? null : note('warn', h('strong', {}, 'AI is not configured. '), 'Load Meter works fully without AI: you can import, edit, validate and run tests yourself. To use the assistant, ',
       h('a', { href: '#/settings' }, 'turn on AI in Settings'), ' and add a provider (a local Ollama model keeps all data on your computer).'),
     h('div', { class: 'card' }, log, h('div', { class: 'form-grid' }, field('Message', prompt, 'Ctrl+Enter to send', 'wide'), field('Scenario context (optional)', file)),
       h('div', { class: 'actions', style: { marginTop: '.6rem' } }, send)),

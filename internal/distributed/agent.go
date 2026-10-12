@@ -18,11 +18,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/app"
-	"github.com/lelanga/phoenix/internal/engine"
-	"github.com/lelanga/phoenix/internal/metrics"
-	"github.com/lelanga/phoenix/internal/results"
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/app"
+	"github.com/lelanga/loadmeter/internal/engine"
+	"github.com/lelanga/loadmeter/internal/metrics"
+	"github.com/lelanga/loadmeter/internal/results"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 // AgentConfig configures a load agent.
@@ -169,7 +169,7 @@ func (a *Agent) runHandler(w http.ResponseWriter, r *http.Request) {
 		errJSON(w, http.StatusConflict, "agent is busy with run "+a.id)
 		return
 	}
-	dir, err := os.MkdirTemp("", "phoenix-agent-")
+	dir, err := os.MkdirTemp("", "loadmeter-agent-")
 	if err != nil {
 		a.mu.Unlock()
 		errJSON(w, http.StatusInternalServerError, err.Error())

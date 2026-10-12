@@ -2,10 +2,10 @@ package har
 
 // HTTPS recording through a local man-in-the-middle proxy.
 //
-// Phoenix generates a per-user recording CA on first use (ECDSA P-256, one
+// Load Meter generates a per-user recording CA on first use (ECDSA P-256, one
 // year) under <ConfigDir>/recording-ca and mints per-host leaf certificates in
 // memory. The browser either trusts that CA (installed by the user) or, when
-// Phoenix launches it, is told to accept certificates chaining to the CA's
+// Load Meter launches it, is told to accept certificates chaining to the CA's
 // public key only (--ignore-certificate-errors-spki-list). Upstream TLS is
 // verified normally unless the user explicitly asks for --insecure-upstream.
 
@@ -34,7 +34,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 // CA is the local recording certificate authority.
@@ -65,7 +65,7 @@ func LoadOrCreateCA(dir string) (ca *CA, created bool, err error) {
 			return ca, false, nil
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, false, fmt.Errorf("recording CA in %s is unreadable (%v); delete it with 'phoenix record ca --delete'", dir, err)
+		return nil, false, fmt.Errorf("recording CA in %s is unreadable (%v); delete it with 'loadmeter record ca --delete'", dir, err)
 	}
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -78,7 +78,7 @@ func LoadOrCreateCA(dir string) (ca *CA, created bool, err error) {
 	now := time.Now()
 	tmpl := &x509.Certificate{
 		SerialNumber:          randSerial(),
-		Subject:               pkix.Name{CommonName: "Phoenix Performance Local Recording CA " + host, Organization: []string{"Phoenix Performance (local recording only)"}},
+		Subject:               pkix.Name{CommonName: "Load Meter Local Recording CA " + host, Organization: []string{"Load Meter (local recording only)"}},
 		NotBefore:             now.Add(-time.Hour),
 		NotAfter:              now.Add(365 * 24 * time.Hour),
 		IsCA:                  true,
@@ -206,7 +206,7 @@ func (ca *CA) Leaf(host string) (*tls.Certificate, error) {
 	}
 	tmpl := &x509.Certificate{
 		SerialNumber:          randSerial(),
-		Subject:               pkix.Name{CommonName: host, Organization: []string{"Phoenix Performance recording"}},
+		Subject:               pkix.Name{CommonName: host, Organization: []string{"Load Meter recording"}},
 		NotBefore:             now.Add(-time.Hour),
 		NotAfter:              notAfter,
 		KeyUsage:              x509.KeyUsageDigitalSignature,

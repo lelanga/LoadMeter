@@ -1,6 +1,6 @@
-// Package distributed runs one scenario across several Phoenix load agents.
+// Package distributed runs one scenario across several Load Meter load agents.
 //
-// The controller (phoenix run --agents ...) splits the workload, ships the
+// The controller (loadmeter run --agents ...) splits the workload, ships the
 // scenario with its data to every agent over HTTPS (self-signed agent
 // certificate pinned by SHA-256 fingerprint, shared bearer token), starts all
 // nodes at a synchronized instant and merges the per-second metric deltas
@@ -27,9 +27,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/engine"
-	"github.com/lelanga/phoenix/internal/metrics"
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/engine"
+	"github.com/lelanga/loadmeter/internal/metrics"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 // ProtocolVersion must match between controller and agent.

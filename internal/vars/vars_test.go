@@ -139,18 +139,18 @@ func TestTimestamp(t *testing.T) {
 }
 
 func TestEnvPrefixOnly(t *testing.T) {
-	t.Setenv("PHOENIX_TEST_X", "val")
+	t.Setenv("LOADMETER_TEST_X", "val")
 	t.Setenv("SECRET_TOKEN", "hunter2")
 	c := NewContext(1, 1)
 	tests := []struct{ in, want string }{
-		{"${__env(PHOENIX_TEST_X)}", "val"},
-		{"${__env(PHOENIX_UNSET_Y)}", ""},
-		{"${__env(PHOENIX_UNSET_Y,dflt)}", "dflt"},
-		{"${__env(PHOENIX_TEST_X,dflt)}", "val"},
+		{"${__env(LOADMETER_TEST_X)}", "val"},
+		{"${__env(LOADMETER_UNSET_Y)}", ""},
+		{"${__env(LOADMETER_UNSET_Y,dflt)}", "dflt"},
+		{"${__env(LOADMETER_TEST_X,dflt)}", "val"},
 		{"${__env(SECRET_TOKEN)}", "${__env(SECRET_TOKEN)}"},
 		{"${__env(SECRET_TOKEN,fallback)}", "${__env(SECRET_TOKEN,fallback)}"},
 		{"${__env()}", "${__env()}"},
-		{"${__env(phoenix_test_x)}", "${__env(phoenix_test_x)}"},
+		{"${__env(loadmeter_test_x)}", "${__env(loadmeter_test_x)}"},
 	}
 	for _, tc := range tests {
 		got, _ := c.Expand(tc.in)

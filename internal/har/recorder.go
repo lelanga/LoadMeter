@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 // Recorder is an http.RoundTripper that captures traffic as HAR 1.2. It backs
@@ -220,7 +220,7 @@ func (r *Recorder) HAR() []byte {
 	if entries == nil {
 		entries = []map[string]any{}
 	}
-	doc := map[string]any{"log": map[string]any{"version": "1.2", "creator": map[string]string{"name": "Phoenix Recorder", "version": "0.2"},
+	doc := map[string]any{"log": map[string]any{"version": "1.2", "creator": map[string]string{"name": "Load Meter Recorder", "version": "0.2"},
 		"pages": pages, "entries": entries}}
 	b, _ := json.MarshalIndent(doc, "", "  ")
 	return b
@@ -256,7 +256,7 @@ func (r *Recorder) Proxy() http.Handler {
 		}
 		if req.Method == http.MethodConnect {
 			if r.CA == nil {
-				http.Error(w, "HTTPS recording needs the recording CA: use 'phoenix record' (which enables HTTPS interception) or export a HAR from your browser", http.StatusNotImplemented)
+				http.Error(w, "HTTPS recording needs the recording CA: use 'loadmeter record' (which enables HTTPS interception) or export a HAR from your browser", http.StatusNotImplemented)
 				return
 			}
 			r.handleConnect(w, req)

@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 func TestCAGenerateReuseAndPermissions(t *testing.T) {
@@ -25,7 +25,7 @@ func TestCAGenerateReuseAndPermissions(t *testing.T) {
 	if err != nil || !created {
 		t.Fatalf("create: %v created=%v", err, created)
 	}
-	if !strings.HasPrefix(ca.Cert.Subject.CommonName, "Phoenix Performance Local Recording CA ") {
+	if !strings.HasPrefix(ca.Cert.Subject.CommonName, "Load Meter Local Recording CA ") {
 		t.Errorf("CN = %q", ca.Cert.Subject.CommonName)
 	}
 	if !ca.Cert.IsCA || ca.Cert.PublicKeyAlgorithm != x509.ECDSA {

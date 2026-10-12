@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/ai"
-	"github.com/lelanga/phoenix/internal/redact"
-	"github.com/lelanga/phoenix/internal/service"
-	"github.com/lelanga/phoenix/internal/tools"
+	"github.com/lelanga/loadmeter/internal/ai"
+	"github.com/lelanga/loadmeter/internal/redact"
+	"github.com/lelanga/loadmeter/internal/service"
+	"github.com/lelanga/loadmeter/internal/tools"
 )
 
 type Step struct {
@@ -50,7 +50,7 @@ func catalog() string {
 	return b.String()
 }
 
-const systemPrompt = `You are the planning component of Phoenix Performance, a load-testing tool. Convert the user's request into a JSON plan of tool calls.
+const systemPrompt = `You are the planning component of Load Meter, a load-testing tool. Convert the user's request into a JSON plan of tool calls.
 Output exactly: {"message": "<one-sentence summary for the user>", "steps": [{"tool": "<name>", "args": {...}, "why": "<short reason>"}]}
 Rules:
 - Use only the tools listed. Use only argument names from each tool's schema. Never invent file names: use those from the scenario list or from an import step (later steps may use "$last" as the file argument to mean the file produced by the previous import).

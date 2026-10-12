@@ -1,7 +1,7 @@
 /dist/
 /bin/
 *.exe
-/phoenix-workspace/
+/loadmeter-workspace/
 /runs/
 *.jtl
 .env

@@ -1,9 +1,9 @@
 package k6
 
 // runtimeJS is the inline helper library emitted into every exported script.
-// It has no remote imports; it mirrors Phoenix's ${var}/${__fn()} expansion,
+// It has no remote imports; it mirrors Load Meter's ${var}/${__fn()} expansion,
 // extractors and assertion helpers. No backticks may appear in it.
-const runtimeJS = `// ---- Phoenix runtime helpers (inline, no remote imports) ----
+const runtimeJS = `// ---- Load Meter runtime helpers (inline, no remote imports) ----
 const _ALNUM = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 let _counter = 0;
 const _jc = { body: null, doc: undefined };
@@ -70,7 +70,7 @@ function _call(expr, vars) {
     case '__vu': return String(__VU);
     case '__iteration': return String(__ITER);
     case '__env': {
-      if (args.length < 1 || args[0].indexOf('PHOENIX_') !== 0) return undefined;
+      if (args.length < 1 || args[0].indexOf('LOADMETER_') !== 0) return undefined;
       const v = __ENV[args[0]];
       return v !== undefined ? v : (args.length > 1 ? args[1] : '');
     }
@@ -207,7 +207,7 @@ function _form(pairs, vars) {
 }
 
 function _multipart(parts, vars) {
-  const b = '----PhoenixBoundary' + Math.random().toString(16).slice(2);
+  const b = '----LoadMeterBoundary' + Math.random().toString(16).slice(2);
   let body = '';
   parts.forEach(function (p) {
     body += '--' + b + '\r\nContent-Disposition: form-data; name="' + _expand(p[0], vars).replace(/"/g, '%22') + '"\r\n\r\n' + _expand(p[1], vars) + '\r\n';

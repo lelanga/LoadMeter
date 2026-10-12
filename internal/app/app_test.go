@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/mockserver"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/mockserver"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 func scWith(w model.Workload) *model.Scenario {
@@ -328,7 +328,7 @@ func TestScenarioFileRoundTripAndStrictness(t *testing.T) {
 }
 
 func TestWorkspaceStartRunAndWait(t *testing.T) {
-	t.Setenv("PHOENIX_HOME", t.TempDir())
+	t.Setenv("LOADMETER_HOME", t.TempDir())
 	ms := mockserver.New("s")
 	srv := httptest.NewServer(ms.Handler())
 	defer srv.Close()
@@ -399,7 +399,7 @@ func TestWorkspaceStartRunAndWait(t *testing.T) {
 }
 
 func TestStartRunPolicyFailureCleansUp(t *testing.T) {
-	t.Setenv("PHOENIX_HOME", t.TempDir())
+	t.Setenv("LOADMETER_HOME", t.TempDir())
 	ws := Workspace{Dir: t.TempDir()}
 	sc := scWith(model.Workload{Executor: model.ExecConstantVUs, VUs: 100, Duration: model.Duration(time.Second)})
 	_, err := ws.StartRun(context.Background(), sc, RunOptions{Policy: safety.Policy{MaxVUs: 5}})

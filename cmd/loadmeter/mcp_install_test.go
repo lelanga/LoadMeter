@@ -41,15 +41,15 @@ func TestInstallUninstallMerge(t *testing.T) {
 			appdata := filepath.Join(home, "AppData")
 			path := filepath.Join(home, filepath.FromSlash(c.rel))
 			ws := t.TempDir()
-			o := installOpts{client: c.client, exe: "/opt/phoenix bin/phoenix", workspace: ws, goos: c.goos, home: home, appdata: appdata, out: &bytes.Buffer{}}
+			o := installOpts{client: c.client, exe: "/opt/loadmeter bin/loadmeter", workspace: ws, goos: c.goos, home: home, appdata: appdata, out: &bytes.Buffer{}}
 
 			// fresh install creates the file
 			if err := installClient(o, false); err != nil {
 				t.Fatal(err)
 			}
 			m := readJSON(t, path)
-			e := m[c.key].(map[string]any)["phoenix"].(map[string]any)
-			if e["command"] != "/opt/phoenix bin/phoenix" {
+			e := m[c.key].(map[string]any)["loadmeter"].(map[string]any)
+			if e["command"] != "/opt/loadmeter bin/loadmeter" {
 				t.Errorf("command %v", e["command"])
 			}
 			args := e["args"].([]any)
@@ -77,20 +77,20 @@ func TestInstallUninstallMerge(t *testing.T) {
 			}
 			m = readJSON(t, path)
 			srv := m[c.key].(map[string]any)
-			if srv["other"] == nil || srv["phoenix"] == nil || m["theme"] != "dark" || m["nested"] == nil {
+			if srv["other"] == nil || srv["loadmeter"] == nil || m["theme"] != "dark" || m["nested"] == nil {
 				t.Fatalf("merge lost data: %v", m)
 			}
 			// idempotent re-install
 			if err := installClient(o, false); err != nil {
 				t.Fatal(err)
 			}
-			// uninstall removes only phoenix
+			// uninstall removes only loadmeter
 			if err := installClient(o, true); err != nil {
 				t.Fatal(err)
 			}
 			m = readJSON(t, path)
 			srv = m[c.key].(map[string]any)
-			if srv["phoenix"] != nil || srv["other"] == nil || m["theme"] != "dark" {
+			if srv["loadmeter"] != nil || srv["other"] == nil || m["theme"] != "dark" {
 				t.Fatalf("uninstall wrong: %v", m)
 			}
 			// uninstall again is a no-op
@@ -104,14 +104,14 @@ func TestInstallUninstallMerge(t *testing.T) {
 func TestInstallDryRunAndErrors(t *testing.T) {
 	home := t.TempDir()
 	var out bytes.Buffer
-	o := installOpts{client: "cursor", exe: "/x/phoenix", workspace: "/w", goos: "linux", home: home, out: &out, dryRun: true}
+	o := installOpts{client: "cursor", exe: "/x/loadmeter", workspace: "/w", goos: "linux", home: home, out: &out, dryRun: true}
 	if err := installClient(o, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(home, ".cursor")); err == nil {
 		t.Error("dry run wrote files")
 	}
-	if !strings.Contains(out.String(), `"phoenix"`) {
+	if !strings.Contains(out.String(), `"loadmeter"`) {
 		t.Errorf("dry run output: %s", out.String())
 	}
 	// invalid JSON is never overwritten
@@ -131,7 +131,7 @@ func TestInstallDryRunAndErrors(t *testing.T) {
 	}
 	// vscode project-level
 	proj := t.TempDir()
-	o = installOpts{client: "vscode", exe: "/x/phoenix", workspace: "/w", goos: "linux", home: home, project: proj, out: &out}
+	o = installOpts{client: "vscode", exe: "/x/loadmeter", workspace: "/w", goos: "linux", home: home, project: proj, out: &out}
 	if err := installClient(o, false); err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestInstallDryRunAndErrors(t *testing.T) {
 func TestInstallClaudeCode(t *testing.T) {
 	var out bytes.Buffer
 	var ran []string
-	o := installOpts{client: "claude-code", exe: "/opt/my phoenix/phoenix", workspace: "/w", goos: "linux", home: t.TempDir(), out: &out,
+	o := installOpts{client: "claude-code", exe: "/opt/my loadmeter/loadmeter", workspace: "/w", goos: "linux", home: t.TempDir(), out: &out,
 		lookPath: func(string) (string, error) { return "/usr/bin/claude", nil },
 		runCmd: func(n string, a ...string) ([]byte, error) {
 			ran = append(ran, n+" "+strings.Join(a, " "))
@@ -153,11 +153,11 @@ func TestInstallClaudeCode(t *testing.T) {
 	if err := installClient(o, false); err != nil {
 		t.Fatal(err)
 	}
-	if len(ran) != 0 || !strings.Contains(out.String(), "claude mcp add phoenix -- '/opt/my phoenix/phoenix' mcp --workspace /w") {
+	if len(ran) != 0 || !strings.Contains(out.String(), "claude mcp add loadmeter -- '/opt/my loadmeter/loadmeter' mcp --workspace /w") {
 		t.Fatalf("dry-run: ran=%v out=%s", ran, out.String())
 	}
 	o.dryRun = false
-	if err := installClient(o, false); err != nil || len(ran) != 1 || !strings.HasPrefix(ran[0], "claude mcp add phoenix --") {
+	if err := installClient(o, false); err != nil || len(ran) != 1 || !strings.HasPrefix(ran[0], "claude mcp add loadmeter --") {
 		t.Fatalf("run: %v %v", err, ran)
 	}
 	o.lookPath = func(string) (string, error) { return "", os.ErrNotExist }

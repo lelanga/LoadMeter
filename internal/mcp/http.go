@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 // TokenPath is where the HTTP transport's bearer token lives.
@@ -97,7 +97,7 @@ func (t *httpTransport) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") || subtle.ConstantTimeCompare([]byte(got), []byte(t.token)) != 1 {
-		w.Header().Set("WWW-Authenticate", `Bearer realm="phoenix-mcp"`)
+		w.Header().Set("WWW-Authenticate", `Bearer realm="loadmeter-mcp"`)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}

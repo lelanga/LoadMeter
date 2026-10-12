@@ -1,4 +1,4 @@
-// Package openapi converts OpenAPI 3.0/3.1 documents (JSON) into Phoenix
+// Package openapi converts OpenAPI 3.0/3.1 documents (JSON) into Load Meter
 // scenarios. Only local "#/..." references are resolved; cyclic references are
 // truncated; credentials are never imported (security schemes become
 // ${secret_*} placeholders).
@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 // MaxInput is the largest accepted document.
@@ -316,7 +316,7 @@ func Import(r io.Reader, source string, o Options) (*model.Scenario, *model.Comp
 		im.sc.Steps = append(im.sc.Steps, model.Step{Type: model.StepTransaction, Name: g, Steps: groups[g]})
 	}
 	if len(im.secretsUsed()) > 0 {
-		im.rep.Manual = append(im.rep.Manual, "Set the secret variables ("+strings.Join(im.secretsUsed(), ", ")+") before running, e.g. with ${__env(PHOENIX_...)} or --set; no credentials were imported.")
+		im.rep.Manual = append(im.rep.Manual, "Set the secret variables ("+strings.Join(im.secretsUsed(), ", ")+") before running, e.g. with ${__env(LOADMETER_...)} or --set; no credentials were imported.")
 	}
 	if probs := im.sc.Validate(); len(probs) > 0 {
 		im.rep.Validated = "failed"

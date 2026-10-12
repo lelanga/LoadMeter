@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 func ds(name, mode string, rows ...string) model.DataSource {

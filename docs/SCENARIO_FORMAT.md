@@ -1,6 +1,6 @@
-# Scenario format: `phoenix/v1`
+# Scenario format: `loadmeter/v1`
 
-A scenario is one JSON file. The UI, the CLI, the importers and the MCP tools all read and write this format. The Go definition is in `internal/model/model.go`. Validation lives in `Scenario.Validate()`; run it with `phoenix validate scenario.json`.
+A scenario is one JSON file. The UI, the CLI, the importers and the MCP tools all read and write this format. The Go definition is in `internal/model/model.go`. Validation lives in `Scenario.Validate()`; run it with `loadmeter validate scenario.json`.
 
 Scenarios live in `<workspace>/scenarios/`. A file name is letters, digits, `_`, `-` and `.`, and ends in `.json`.
 
@@ -8,7 +8,7 @@ Scenarios live in `<workspace>/scenarios/`. A file name is letters, digits, `_`,
 
 | Field | Type | Required | Meaning |
 |---|---|---|---|
-| `version` | string | no | Must be `"phoenix/v1"` if present |
+| `version` | string | no | Must be `"loadmeter/v1"` if present |
 | `name` | string | yes (by convention) | Display name |
 | `description` | string | no | Free text |
 | `defaults` | object | no | Settings that apply to every request. See [Defaults](#defaults) |
@@ -53,10 +53,10 @@ Functions look like `${__name(arg1,arg2)}`. Arguments may contain `${...}`.
 | `${__counter()}` | A counter that rises by 1 on every call, shared by all VUs |
 | `${__vu()}` | The number of the current VU |
 | `${__iteration()}` | The iteration number of the current VU |
-| `${__env(PHOENIX_NAME)}` / `${__env(PHOENIX_NAME,default)}` | Value of an environment variable. Only names that start with `PHOENIX_` can be read. This stops an imported scenario from reading other secrets |
+| `${__env(LOADMETER_NAME)}` / `${__env(LOADMETER_NAME,default)}` | Value of an environment variable. Only names that start with `LOADMETER_` can be read. This stops an imported scenario from reading other secrets |
 | `${__urlencode(value)}` | Percent-encoded value |
 
-Use `${__env(PHOENIX_API_TOKEN)}` to keep secrets out of the file. See [SECURITY.md](SECURITY.md).
+Use `${__env(LOADMETER_API_TOKEN)}` to keep secrets out of the file. See [SECURITY.md](SECURITY.md).
 
 ## Steps
 
@@ -65,7 +65,7 @@ Every step has a `type`. Common fields: `name`, `disabled` (skip this step), `co
 | `type` | Uses | Meaning |
 |---|---|---|
 | `request` | `request` | Send one HTTP request. `name` labels it in reports |
-| `transaction` | `steps`, `name` (required) | A named group. Phoenix reports its time (think time is subtracted) and counts it failed if any inner request failed |
+| `transaction` | `steps`, `name` (required) | A named group. Load Meter reports its time (think time is subtracted) and counts it failed if any inner request failed |
 | `group` | `steps` | A group with no timing of its own |
 | `loop` | `steps`, `count` (at least 1) | Repeat the inner steps `count` times |
 | `if` | `steps`, `condition` | Run the inner steps only when the condition is true |
@@ -91,7 +91,7 @@ Every step has a `type`. Common fields: `name`, `disabled` (skip this step), `co
 | `extract` | array of extractors | Save values from the response |
 | `assert` | array of assertions | Check the response |
 
-Only one body form is used. The order is `multipart`, then `form`, then `body`. Phoenix sets `Content-Type` for `form` and `multipart` if you did not. It sends `User-Agent: Phoenix-Performance/0.1` if you did not set one.
+Only one body form is used. The order is `multipart`, then `form`, then `body`. Load Meter sets `Content-Type` for `form` and `multipart` if you did not. It sends `User-Agent: Load Meter-Performance/0.1` if you did not set one.
 
 Multipart part: `{name, value}` for a text field, or `{name, file, contentType}` for a file. `file` is a path relative to the scenario file. Absolute paths and paths that leave the scenario folder are refused.
 
@@ -195,15 +195,15 @@ The safety policy can refuse a workload that needs more VUs than `maxVUs` or run
 | `op` | `<`, `<=`, `>` or `>=` |
 | `threshold` | A number |
 
-`phoenix run` exits with code 3 if any SLA fails.
+`loadmeter run` exits with code 3 if any SLA fails.
 
 ## Complete example
 
-This is a small, valid scenario for the bundled mock server (`phoenix mock`). It uses a variable, a data source, an extractor, assertions, a loop, a condition, a function and an SLA. For a larger sample see `examples/shop-login.json`.
+This is a small, valid scenario for the bundled mock server (`loadmeter mock`). It uses a variable, a data source, an extractor, assertions, a loop, a condition, a function and an SLA. For a larger sample see `examples/shop-login.json`.
 
 ```json
 {
-  "version": "phoenix/v1",
+  "version": "loadmeter/v1",
   "name": "Mock shop quick check",
   "description": "Login, browse three times, place an order.",
   "defaults": {
@@ -288,7 +288,7 @@ This is a small, valid scenario for the bundled mock server (`phoenix mock`). It
 To try it, save it as `shop.json` next to a copy of `examples/users.csv` (columns `username,password,item`), then:
 
 ```bash
-phoenix mock &
-phoenix validate shop.json
-phoenix run shop.json --vus 5 --duration 10s
+loadmeter mock &
+loadmeter validate shop.json
+loadmeter run shop.json --vus 5 --duration 10s
 ```

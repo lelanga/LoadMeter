@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 func load(t *testing.T, o Options) (*model.Scenario, *model.CompatReport) {

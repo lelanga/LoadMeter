@@ -19,5 +19,5 @@ Cells cite source IDs. "unverified" = not confirmed in any fetched source (may b
 | Other (not in matrix request) | Artillery: HTTP, Playwright, Socket.IO, WebSocket; distributed on Lambda, Fargate, ACI [S051]; NeoLoad: auto-correlation valued, expensive [S041] | | | | | |
 
 ## Reading notes
-- The matrix shows Phoenix's white space: no OSS tool pairs LoadRunner-style automatic correlation + replay validation with a single-binary install and local web UI. k6 Studio is the closest (rules and validator, but desktop app requiring Chrome, AGPL-3.0; auto-detection of correlations not confirmed in fetched pages) [S023, S049].
+- The matrix shows Load Meter's white space: no OSS tool pairs LoadRunner-style automatic correlation + replay validation with a single-binary install and local web UI. k6 Studio is the closest (rules and validator, but desktop app requiring Chrome, AGPL-3.0; auto-detection of correlations not confirmed in fetched pages) [S023, S049].
 - Many "unverified" cells are Gatling OSS and Locust/Taurus recorder/correlation internals; a second pass should read docs.gatling.io and Locust/Taurus docs directly.

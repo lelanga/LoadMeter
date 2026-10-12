@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/har"
-	"github.com/lelanga/phoenix/internal/safety"
-	"github.com/lelanga/phoenix/internal/service"
+	"github.com/lelanga/loadmeter/internal/har"
+	"github.com/lelanga/loadmeter/internal/safety"
+	"github.com/lelanga/loadmeter/internal/service"
 )
 
-// runRecord implements `phoenix record` (script recording) and
-// `phoenix record ca` (recording CA management).
+// runRecord implements `loadmeter record` (script recording) and
+// `loadmeter record ca` (recording CA management).
 func runRecord(args []string) error {
 	if len(args) > 0 && args[0] == "ca" {
 		return recordCA(args[1:])
@@ -37,7 +37,7 @@ func runRecord(args []string) error {
 		return err
 	}
 	if fs.NArg() > 0 {
-		return fmt.Errorf("unexpected argument %q (did you mean 'phoenix record ca'?)", fs.Arg(0))
+		return fmt.Errorf("unexpected argument %q (did you mean 'loadmeter record ca'?)", fs.Arg(0))
 	}
 	svc, err := newService(*ws, nil)
 	if err != nil {
@@ -61,7 +61,7 @@ func runRecord(args []string) error {
 		fmt.Printf("Launched %s with a temporary profile. Browse your application; closing the browser stops the recording.\n", info.BrowserPath)
 	} else {
 		fmt.Printf("Set http://%s as the HTTP and HTTPS proxy of your browser or client.\n"+
-			"For HTTPS, the client must trust %s (see 'phoenix record ca'), or use --browser instead.\n", info.ProxyAddr, info.CACertPath)
+			"For HTTPS, the client must trust %s (see 'loadmeter record ca'), or use --browser instead.\n", info.ProxyAddr, info.CACertPath)
 	}
 	fmt.Println("Type a transaction name and press Enter to start a transaction; an empty line ends it. Press Ctrl+C to stop.")
 	fmt.Println("Note: recording is not limited by the allowlist, but recorded hosts must be allowlisted before load testing.")
@@ -137,7 +137,7 @@ wait:
 		return err
 	}
 	if res.Import == nil {
-		fmt.Printf("next: phoenix import-har %s --name <scenario>   (or use --to-scenario next time)\n", res.HARFile)
+		fmt.Printf("next: loadmeter import-har %s --name <scenario>   (or use --to-scenario next time)\n", res.HARFile)
 		return nil
 	}
 	imp := res.Import
@@ -150,7 +150,7 @@ wait:
 			fmt.Printf("  %s  %-14s %-10s mode=%s uses=%d\n", p.ID, p.Column, p.Kind, p.Mode, len(p.Uses))
 		}
 	}
-	fmt.Printf("next: phoenix correlate %s --apply all   then: phoenix run %s\n", imp.File, filepath.Join(svc.WS.ScenariosDir(), imp.File))
+	fmt.Printf("next: loadmeter correlate %s --apply all   then: loadmeter run %s\n", imp.File, filepath.Join(svc.WS.ScenariosDir(), imp.File))
 	return nil
 }
 
@@ -167,7 +167,7 @@ func recordCA(args []string) error {
 			return err
 		}
 		safety.Audit("record.ca_deleted", map[string]any{"dir": dir})
-		fmt.Printf("deleted the recording CA in %s.\nIf you installed it in an OS or browser trust store, remove \"Phoenix Performance Local Recording CA\" there too.\n", dir)
+		fmt.Printf("deleted the recording CA in %s.\nIf you installed it in an OS or browser trust store, remove \"Load Meter Local Recording CA\" there too.\n", dir)
 		return nil
 	}
 	ca, created, err := har.LoadOrCreateCA(dir)
@@ -198,20 +198,20 @@ func recordCA(args []string) error {
   SPKI sha256 (base64): %s
   private key: %s (owner-only; never share it)
 
-You do NOT need to install this CA when you record with 'phoenix record --browser':
+You do NOT need to install this CA when you record with 'loadmeter record --browser':
 the launched browser trusts only this CA's key, only for that session.
 
 To record HTTPS from another browser or client, trust the certificate while recording
 and remove it afterwards:
-  Linux (system):      sudo cp %[6]s /usr/local/share/ca-certificates/phoenix-recording.crt && sudo update-ca-certificates
-  Linux (Chrome/NSS):  certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n "Phoenix Recording CA" -i %[6]s
+  Linux (system):      sudo cp %[6]s /usr/local/share/ca-certificates/loadmeter-recording.crt && sudo update-ca-certificates
+  Linux (Chrome/NSS):  certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n "Load Meter Recording CA" -i %[6]s
   macOS:               security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db %[6]s
   Windows:             certutil -user -addstore Root %[6]s
   Firefox:             Settings > Privacy & Security > Certificates > View Certificates > Authorities > Import
   curl / scripts:      --cacert %[6]s (or SSL_CERT_FILE / NODE_EXTRA_CA_CERTS)
 
 Anyone holding the private key can impersonate any HTTPS site to clients that trust it.
-Delete it when you no longer record: phoenix record ca --delete
+Delete it when you no longer record: loadmeter record ca --delete
 `, filepath.Join(dir, "ca.pem"), ca.Cert.Subject.CommonName, ca.Cert.NotAfter.Format("2006-01-02"), ca.SPKIHash(), filepath.Join(dir, "ca-key.pem"), certPath)
 	return nil
 }

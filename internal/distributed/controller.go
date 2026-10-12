@@ -17,11 +17,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/engine"
-	"github.com/lelanga/phoenix/internal/metrics"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/results"
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/engine"
+	"github.com/lelanga/loadmeter/internal/metrics"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/results"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 // AgentSpec identifies an agent and pins its certificate.
@@ -47,7 +47,7 @@ func ParseAgentSpec(s string) (AgentSpec, error) {
 
 func (a AgentSpec) check() error {
 	if len(a.Fingerprint) != 64 {
-		return fmt.Errorf("agent %s: a SHA-256 certificate fingerprint is required (use host:port#<fingerprint>; 'phoenix agent' prints it at startup)", a.Addr)
+		return fmt.Errorf("agent %s: a SHA-256 certificate fingerprint is required (use host:port#<fingerprint>; 'loadmeter agent' prints it at startup)", a.Addr)
 	}
 	return nil
 }
@@ -420,7 +420,7 @@ func (c *Controller) hello(n *node) error {
 			return fmt.Errorf("bad hello: %w", err)
 		}
 		if h.Protocol != ProtocolVersion {
-			return fmt.Errorf("agent speaks protocol %d, controller %d (use the same Phoenix version)", h.Protocol, ProtocolVersion)
+			return fmt.Errorf("agent speaks protocol %d, controller %d (use the same Load Meter version)", h.Protocol, ProtocolVersion)
 		}
 		if h.Busy {
 			return errors.New("agent is busy with another run")

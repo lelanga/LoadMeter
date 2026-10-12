@@ -19,7 +19,7 @@ Honest list. Anything not listed here and not in the support matrices should be 
 - Model gaps reported by the importer: CSV skip-header with named columns, negated assertions, auth managers, cookie policies, all-matches extractors, throughput timers, per-loop CSV advance.
 
 ## LoadRunner (VuGen)
-- Static analysis only; Phoenix does not execute VuGen scripts or use the LoadRunner runtime. Full details: `internal/loadrunner/README.md`.
+- Static analysis only; Load Meter does not execute VuGen scripts or use the LoadRunner runtime. Full details: `internal/loadrunner/README.md`.
 - Web (HTTP/HTML) protocol subset only. Other protocols are reported as unsupported.
 - No C evaluation: `for`/`while`, `sprintf`-built arguments, macros and `globals.h` logic are reported, not converted.
 - `.prm` key names differ between VuGen versions and were not verified against a licensed install.
@@ -44,7 +44,7 @@ Honest list. Anything not listed here and not in the support matrices should be 
 - k6: JSONPath filters/wildcards/recursive descent and XPath unsupported; error-rate thresholds count HTTP failures only; teardown runs once globally; CSV rows follow the k6 iteration counter, not a shared cursor.
 
 ## Recording
-- HTTPS is recorded through a local recording CA. Only Chromium-family browsers are launched pre-configured (`record --browser`); other clients need the CA installed manually (`phoenix record ca`). Running Chrome as root needs `--no-sandbox` via `PHOENIX_BROWSER_ARGS`.
+- HTTPS is recorded through a local recording CA. Only Chromium-family browsers are launched pre-configured (`record --browser`); other clients need the CA installed manually (`loadmeter record ca`). Running Chrome as root needs `--no-sandbox` via `LOADMETER_BROWSER_ARGS`.
 - Browser-to-proxy is HTTP/1.1 only; WebSocket upgrades fail while recording. QUIC is disabled only in the launched browser.
 - Recorded body copies are capped at 2 MB; `Accept-Encoding` is replaced so bodies are readable.
 - Recording state is in memory (one per process); the HAR is written at stop. In the UI, closing the browser does not auto-stop.

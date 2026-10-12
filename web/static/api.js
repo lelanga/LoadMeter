@@ -16,7 +16,7 @@ export async function initSession() {
   let data = null;
   try { data = await res.json(); } catch { /* not json */ }
   if (!res.ok || !data) {
-    throw new ApiError((data && data.error) || 'No session. Open the URL printed by "phoenix serve" (it contains ?token=...).', res.status, data);
+    throw new ApiError((data && data.error) || 'No session. Open the URL printed by "loadmeter serve" (it contains ?token=...).', res.status, data);
   }
   token = data.token || '';
   // drop ?token= from the address bar once the cookie is set
@@ -28,7 +28,7 @@ export async function initSession() {
 }
 
 export async function api(method, path, body) {
-  const headers = { 'X-Phoenix-Token': token };
+  const headers = { 'X-LoadMeter-Token': token };
   let payload;
   if (typeof FormData !== 'undefined' && body instanceof FormData) {
     payload = body;
@@ -40,7 +40,7 @@ export async function api(method, path, body) {
   try {
     res = await fetch(path, { method, headers, body: payload, credentials: 'same-origin' });
   } catch (e) {
-    throw new ApiError('Cannot reach the Phoenix server: ' + e.message, 0, null);
+    throw new ApiError('Cannot reach the Load Meter server: ' + e.message, 0, null);
   }
   const ct = res.headers.get('content-type') || '';
   let data = null;

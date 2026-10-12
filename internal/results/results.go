@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/metrics"
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/metrics"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 type SLAResult struct {
@@ -36,7 +36,7 @@ type Finding struct {
 }
 
 type Environment struct {
-	Phoenix   string `json:"phoenixVersion"`
+	LoadMeter string `json:"loadmeterVersion"`
 	GoVersion string `json:"goVersion"`
 	OS        string `json:"os"`
 	Arch      string `json:"arch"`
@@ -84,7 +84,7 @@ var Version = "0.1.0-dev"
 
 func Env() Environment {
 	h, _ := os.Hostname()
-	return Environment{Phoenix: Version, GoVersion: runtime.Version(), OS: runtime.GOOS, Arch: runtime.GOARCH, CPUs: runtime.NumCPU(), Hostname: h}
+	return Environment{LoadMeter: Version, GoVersion: runtime.Version(), OS: runtime.GOOS, Arch: runtime.GOARCH, CPUs: runtime.NumCPU(), Hostname: h}
 }
 
 func NewRunID(name string) string {

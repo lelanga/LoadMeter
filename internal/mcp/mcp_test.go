@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/app"
-	"github.com/lelanga/phoenix/internal/service"
+	"github.com/lelanga/loadmeter/internal/app"
+	"github.com/lelanga/loadmeter/internal/service"
 )
 
 type client struct {
@@ -29,7 +29,7 @@ type client struct {
 
 func newSvc(t *testing.T) *service.Service {
 	t.Helper()
-	t.Setenv("PHOENIX_HOME", t.TempDir())
+	t.Setenv("LOADMETER_HOME", t.TempDir())
 	s, err := service.New(app.Workspace{Dir: filepath.Join(t.TempDir(), "ws")})
 	if err != nil {
 		t.Fatal(err)
@@ -475,20 +475,20 @@ func TestResourcesAndPrompts(t *testing.T) {
 	res, _ := r["resources"].([]any)
 	foundDemo := false
 	for _, x := range res {
-		if x.(map[string]any)["uri"] == "phoenix://scenarios/demo-shop.json" {
+		if x.(map[string]any)["uri"] == "loadmeter://scenarios/demo-shop.json" {
 			foundDemo = true
 		}
 	}
 	if !foundDemo {
 		t.Errorf("scenario resource missing: %v", res)
 	}
-	r = result(t, c.call("resources/read", map[string]any{"uri": "phoenix://scenarios/demo-shop.json"}))
+	r = result(t, c.call("resources/read", map[string]any{"uri": "loadmeter://scenarios/demo-shop.json"}))
 	contents, _ := r["contents"].([]any)
 	if len(contents) != 1 || !strings.Contains(fmt.Sprint(contents[0]), "baseUrl") {
 		t.Errorf("read: %v", r)
 	}
 	// traversal and unknown URIs are protocol errors, not file reads
-	for _, uri := range []string{"phoenix://scenarios/../../etc/passwd", "phoenix://scenarios/%2e%2e%2fx.json", "file:///etc/passwd", "phoenix://runs/../x/summary", "phoenix://scenarios/missing.json", ""} {
+	for _, uri := range []string{"loadmeter://scenarios/../../etc/passwd", "loadmeter://scenarios/%2e%2e%2fx.json", "file:///etc/passwd", "loadmeter://runs/../x/summary", "loadmeter://scenarios/missing.json", ""} {
 		m := c.call("resources/read", map[string]any{"uri": uri})
 		if m["error"] == nil {
 			t.Errorf("resources/read %q succeeded: %v", uri, m)
@@ -645,7 +645,7 @@ func TestValidateLoopbackAddrAndToken(t *testing.T) {
 			t.Errorf("%q accepted", a)
 		}
 	}
-	t.Setenv("PHOENIX_HOME", t.TempDir())
+	t.Setenv("LOADMETER_HOME", t.TempDir())
 	tok, err := EnsureToken()
 	if err != nil || len(tok) < 32 {
 		t.Fatalf("%q %v", tok, err)

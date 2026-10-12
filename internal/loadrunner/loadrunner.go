@@ -1,5 +1,5 @@
 // Package loadrunner imports LoadRunner VuGen "Web - HTTP/HTML" scripts into
-// Phoenix's canonical scenario model by static analysis of the script text.
+// Load Meter's canonical scenario model by static analysis of the script text.
 //
 // Nothing in a script is compiled or executed and no OpenText/Micro Focus
 // runtime is needed or bundled: the importer tokenizes the C source, maps the
@@ -18,7 +18,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 // ErrUnsupportedProtocol is returned (wrapped) when the .usr declares no
@@ -358,7 +358,7 @@ func run(files map[string][]byte, name string) (*model.Scenario, *model.CompatRe
 			}
 		}
 		im.finishAnalysis(true)
-		rep.Manual = append(rep.Manual, "Re-record the business flow at the HTTP level (e.g. as a HAR) or use the protocol's own tooling; Phoenix replays HTTP only")
+		rep.Manual = append(rep.Manual, "Re-record the business flow at the HTTP level (e.g. as a HAR) or use the protocol's own tooling; Load Meter replays HTTP only")
 		return nil, rep, an, fmt.Errorf("%w: %s", ErrUnsupportedProtocol, strings.Join(an.Protocols, ", "))
 	}
 
@@ -625,7 +625,7 @@ func (im *importer) reportHeader(f *cFile) {
 		if d.kind == sDecl && strings.HasPrefix(d.keyword, "#") {
 			continue
 		}
-		im.rep.Add("global declaration", "", im.loc(f, d.line), model.Partial, "global C declaration ignored (Phoenix variables are strings in ${...}). Excerpt: "+d.excerpt)
+		im.rep.Add("global declaration", "", im.loc(f, d.line), model.Partial, "global C declaration ignored (Load Meter variables are strings in ${...}). Excerpt: "+d.excerpt)
 		im.customCode(f, d.line, "global", d.excerpt)
 	}
 	for _, fn := range f.funcs {

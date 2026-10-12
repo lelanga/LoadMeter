@@ -77,7 +77,7 @@ export async function renderImport(root) {
   const harName = nameFor();
   const stat = h('input', { type: 'checkbox' }), creds = h('input', { type: 'checkbox' });
   const harCard = h('div', { class: 'card' }, h('h2', {}, 'HAR recording'),
-    h('p', { class: 'hint' }, 'Export a HAR from your browser developer tools (Network tab). Phoenix turns it into a scenario and finds dynamic values.'),
+    h('p', { class: 'hint' }, 'Export a HAR from your browser developer tools (Network tab). Load Meter turns it into a scenario and finds dynamic values.'),
     har.f, harName.f, check('Include static files (images, CSS, scripts)', stat), h('br'), check('Keep credentials from the recording', creds),
     note('warn', 'By default, passwords, tokens, cookies and authorization headers are replaced with placeholders such as ${password}. Keep credentials only if you understand that they will be stored in plain text in the scenario file.'),
     button('Import HAR', async () => {
@@ -116,6 +116,6 @@ export async function renderImport(root) {
       showResult(result, await api('POST', '/api/import/loadrunner', fd), 'lr'); toast('LoadRunner script imported', 'ok');
     }, { kind: 'primary' }));
 
-  root.append(pageHead('Import', 'Bring in an existing recording or test plan. Imported files are untrusted data; Phoenix shows everything as plain text.'),
+  root.append(pageHead('Import', 'Bring in an existing recording or test plan. Imported files are untrusted data; Load Meter shows everything as plain text.'),
     h('div', { class: 'cols' }, harCard, jmxCard, lrCard), result);
 }

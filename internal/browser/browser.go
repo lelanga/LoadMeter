@@ -1,5 +1,5 @@
 // Package browser finds and launches a local Chromium-family browser
-// (Chrome, Chromium, Edge) for script recording through Phoenix's proxy.
+// (Chrome, Chromium, Edge) for script recording through Load Meter's proxy.
 package browser
 
 import (
@@ -32,19 +32,19 @@ func osFinder() finder {
 // ErrNotFound is returned when no supported browser is installed.
 var ErrNotFound = errors.New("no Chrome, Chromium or Edge browser found")
 
-// Find returns the path of a Chromium-family browser. PHOENIX_BROWSER (a path
+// Find returns the path of a Chromium-family browser. LOADMETER_BROWSER (a path
 // or a command name) takes precedence.
 func Find() (string, error) { return osFinder().find() }
 
 func (f finder) find() (string, error) {
-	if p := strings.TrimSpace(f.getenv("PHOENIX_BROWSER")); p != "" {
+	if p := strings.TrimSpace(f.getenv("LOADMETER_BROWSER")); p != "" {
 		if f.exists(p) {
 			return p, nil
 		}
 		if lp, err := f.lookPath(p); err == nil {
 			return lp, nil
 		}
-		return "", fmt.Errorf("PHOENIX_BROWSER=%q does not point to an executable browser", p)
+		return "", fmt.Errorf("LOADMETER_BROWSER=%q does not point to an executable browser", p)
 	}
 	for _, name := range []string{"google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge", "microsoft-edge-stable", "msedge", "chrome"} {
 		if lp, err := f.lookPath(name); err == nil {
@@ -91,7 +91,7 @@ func (f finder) find() (string, error) {
 			return c, nil
 		}
 	}
-	return "", fmt.Errorf("%w: install Google Chrome, Chromium or Microsoft Edge, or set PHOENIX_BROWSER to the browser executable (you can also set your browser's proxy to the address printed by 'phoenix record' manually)", ErrNotFound)
+	return "", fmt.Errorf("%w: install Google Chrome, Chromium or Microsoft Edge, or set LOADMETER_BROWSER to the browser executable (you can also set your browser's proxy to the address printed by 'loadmeter record' manually)", ErrNotFound)
 }
 
 // Options configure a recording browser.
@@ -109,7 +109,7 @@ type Session struct {
 	Done       chan struct{} // closed when the browser process exits
 }
 
-// Args builds the browser command line. PHOENIX_BROWSER_ARGS (whitespace
+// Args builds the browser command line. LOADMETER_BROWSER_ARGS (whitespace
 // separated) is appended, e.g. "--headless=new" for automated smoke tests.
 func Args(o Options, profile string) []string {
 	a := []string{
@@ -121,7 +121,7 @@ func Args(o Options, profile string) []string {
 		"--disable-sync", "--disable-default-apps", "--disable-features=OptimizationHints,MediaRouter,Translate",
 		"--disable-quic", // QUIC (HTTP/3) bypasses HTTP proxies
 	}
-	if extra := strings.Fields(os.Getenv("PHOENIX_BROWSER_ARGS")); len(extra) > 0 {
+	if extra := strings.Fields(os.Getenv("LOADMETER_BROWSER_ARGS")); len(extra) > 0 {
 		a = append(a, extra...)
 	}
 	start := o.StartURL
@@ -147,7 +147,7 @@ func Launch(ctx context.Context, o Options) (*Session, error) {
 		}
 		o.Path = p
 	}
-	profile, err := os.MkdirTemp("", "phoenix-record-profile-")
+	profile, err := os.MkdirTemp("", "loadmeter-record-profile-")
 	if err != nil {
 		return nil, err
 	}

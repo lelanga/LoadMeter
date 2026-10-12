@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 // Overrides are simple workload controls exposed by the CLI, UI, API and MCP.

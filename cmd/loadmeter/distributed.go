@@ -14,19 +14,19 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/app"
-	"github.com/lelanga/phoenix/internal/distributed"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/report"
-	"github.com/lelanga/phoenix/internal/results"
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/app"
+	"github.com/lelanga/loadmeter/internal/distributed"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/report"
+	"github.com/lelanga/loadmeter/internal/results"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 func init() {
-	register("agent", "Run a load agent for distributed tests: phoenix agent --token-file F [--listen 0.0.0.0:7979 --allow-host H]", cmdAgent)
+	register("agent", "Run a load agent for distributed tests: loadmeter agent --token-file F [--listen 0.0.0.0:7979 --allow-host H]", cmdAgent)
 }
 
-// ---------- controller side: phoenix run --agents ... ----------
+// ---------- controller side: loadmeter run --agents ... ----------
 
 type distFlags struct {
 	agents     stringList
@@ -38,7 +38,7 @@ type distFlags struct {
 func addDistFlags(fs *flag.FlagSet, d *distFlags) {
 	fs.Var(&d.agents, "agents", "distributed: load agents as host:port#sha256-fingerprint (comma-separated or repeatable)")
 	fs.StringVar(&d.agentsFile, "agents-file", "", `distributed: agents.json {"tokenFile": "...", "agents": [{"id","addr","fingerprint"}]}`)
-	fs.StringVar(&d.tokenFile, "agent-token-file", "", "distributed: shared agent token file (default: tokenFile from --agents-file or $PHOENIX_AGENT_TOKEN_FILE)")
+	fs.StringVar(&d.tokenFile, "agent-token-file", "", "distributed: shared agent token file (default: tokenFile from --agents-file or $LOADMETER_AGENT_TOKEN_FILE)")
 	fs.Float64Var(&d.localShare, "local-share", 0, "distributed: fraction of the load to also run on this machine, 0 to 0.9 (default 0: agents only)")
 }
 
@@ -71,7 +71,7 @@ func runDistributed(sc *model.Scenario, baseDir string, f *runFlags, pol safety.
 		specs = append(specs, sp)
 	}
 	if tokenFile == "" {
-		tokenFile = os.Getenv("PHOENIX_AGENT_TOKEN_FILE")
+		tokenFile = os.Getenv("LOADMETER_AGENT_TOKEN_FILE")
 	}
 	if tokenFile == "" {
 		return fmt.Errorf("distributed runs need the agents' shared token: pass --agent-token-file (a copy of the agent's --token-file)")
@@ -202,11 +202,11 @@ func runDistributed(sc *model.Scenario, baseDir string, f *runFlags, pol safety.
 	return nil
 }
 
-// ---------- agent side: phoenix agent ----------
+// ---------- agent side: loadmeter agent ----------
 
 func cmdAgent(args []string) error {
 	fs := flag.NewFlagSet("agent", flag.ContinueOnError)
-	listen := fs.String("listen", fmt.Sprintf("0.0.0.0:%d", distributed.DefaultPort), "listen address (agents are the only Phoenix component meant to listen on non-loopback)")
+	listen := fs.String("listen", fmt.Sprintf("0.0.0.0:%d", distributed.DefaultPort), "listen address (agents are the only Load Meter component meant to listen on non-loopback)")
 	tokenFile := fs.String("token-file", "", "shared token file (required; generated with 32 random bytes, mode 0600, if it does not exist)")
 	id := fs.String("id", "", "agent name shown in reports (default: hostname)")
 	certDir := fs.String("cert-dir", filepath.Join(safety.ConfigDir(), "agent"), "directory for the agent's self-signed TLS certificate")
@@ -258,10 +258,10 @@ func cmdAgent(args []string) error {
 	if ip := net.ParseIP(host); ip != nil && ip.IsUnspecified() {
 		host = "<this-host>"
 	}
-	fmt.Printf("phoenix agent listening on https://%s (TLS, token required)\n", ln.Addr())
+	fmt.Printf("loadmeter agent listening on https://%s (TLS, token required)\n", ln.Addr())
 	fmt.Printf("certificate fingerprint (sha256): %s\n", fp)
 	fmt.Printf("agent policy: maxVUs %d, maxDuration %s, allowlisted hosts %v (loopback always allowed)\n", pol.MaxVUs, pol.MaxDur(), pol.AllowedHosts)
-	fmt.Printf("controller: phoenix run scenario.json --agents %s#%s --agent-token-file <copy of %s>\n", net.JoinHostPort(host, port), fp, *tokenFile)
+	fmt.Printf("controller: loadmeter run scenario.json --agents %s#%s --agent-token-file <copy of %s>\n", net.JoinHostPort(host, port), fp, *tokenFile)
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	select {

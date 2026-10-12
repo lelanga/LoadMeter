@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lelanga/phoenix/internal/app"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/openapi"
+	"github.com/lelanga/loadmeter/internal/app"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/openapi"
 )
 
 func nodeCheck(t *testing.T, name string, src []byte) {

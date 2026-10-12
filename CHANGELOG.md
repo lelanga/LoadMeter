@@ -2,7 +2,7 @@
 
 ## 0.1.0-dev — 2026-10-12
 ### Added
-- Canonical scenario IR `phoenix/v1` with validation.
+- Canonical scenario IR `loadmeter/v1` with validation.
 - Load engine: constant-vus, ramping-vus, per-vu-iterations, constant- and ramping-arrival-rate; transactions, think time, loops, conditions, extractors, assertions, CSV data feeds.
 - Metrics: mergeable log-linear histograms, per-second timeline, JTL-compatible raw CSV, generator CPU/RSS.
 - Self-contained HTML report, run comparison with regression detection, SLA evaluation, findings (observation vs hypothesis).
@@ -13,7 +13,14 @@
 - AI providers (Anthropic, OpenAI, Gemini, OpenRouter, Ollama, mock) with routing, consent, budgets and redaction; MCP stdio server; natural-language assistant.
 - Safety policy: loopback-only by default, host allowlist, VU/RPS/duration caps, confirmation gate, audit log.
 - Cross-platform binaries, install script, Dockerfile, Makefile.
+- HTTPS recording via a local CA, browser-launched recording, transaction markers (CLI, UI, API, MCP).
+- Distributed runs: `agent` command, pinned TLS, token auth, merged histograms, per-node results.
+- OpenAPI 3 import and k6 export.
+- MCP resources, prompts, progress, HTTP transport and `mcp install` for six clients.
+### Changed
+- Product renamed from Phoenix to Load Meter (binary `loadmeter`, env vars `LOADMETER_*`, config dir `~/.loadmeter`, format tag `loadmeter/v1`).
 ### Fixed during integration
+- Ten bugs found by the QA pass (see TEST_RESULTS.md).
 - Web server panicked at start-up because of a route-pattern conflict (`/api/` vs `GET /`); covered by a test now.
 - CLI flag reordering mis-parsed value flags such as `--apply all`; it now reads flag kinds from each command's flag set.
 - UI read error rates as fractions (API returns percent) and read live events without their wrapper.

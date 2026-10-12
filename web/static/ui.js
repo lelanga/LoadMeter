@@ -42,14 +42,14 @@ export const enc = encodeURIComponent;
 
 // ---------- mode ----------
 export function initMode() {
-  const m = store.get('phoenix.mode');
+  const m = store.get('loadmeter.mode');
   document.documentElement.dataset.mode = m === 'advanced' ? 'advanced' : 'beginner';
 }
 export const getMode = () => (document.documentElement.dataset.mode === 'advanced' ? 'advanced' : 'beginner');
 export const isAdv = () => getMode() === 'advanced';
 export function setMode(m) {
   document.documentElement.dataset.mode = m;
-  store.set('phoenix.mode', m);
+  store.set('loadmeter.mode', m);
 }
 
 // ---------- toast ----------

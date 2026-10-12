@@ -1,7 +1,7 @@
 # loadrunner: VuGen Web (HTTP/HTML) script importer
 
 This package converts a LoadRunner VuGen **Web - HTTP/HTML** script into a
-Phoenix scenario (`model.Scenario`) and a `model.CompatReport`. It works by
+Load Meter scenario (`model.Scenario`) and a `model.CompatReport`. It works by
 **static analysis of the script text only**:
 
 * it never compiles or runs the C code in a script;
@@ -60,7 +60,7 @@ are reported `unsupported` at their `file:line`.
 
 ### Requests and registrations
 
-| VuGen construct | Phoenix IR | Status |
+| VuGen construct | Load Meter IR | Status |
 |---|---|---|
 | `web_url` (`URL=`, `Referer=`) | `GET` request; `Referer` becomes a header. Step name = first argument. | supported |
 | `Resource=`, `RecContentType=`, `Snapshot=`, `Mode=`, `TargetFrame=`, `EncodeAtSign=` | none | ignored (reported once per attribute) |
@@ -91,7 +91,7 @@ warning.
 
 ### Flow, timing and variables
 
-| VuGen construct | Phoenix IR | Status |
+| VuGen construct | Load Meter IR | Status |
 |---|---|---|
 | `lr_start_transaction` / `lr_end_transaction` | `transaction` step wrapping the enclosed steps | supported |
 | Unbalanced transactions, `LR_FAIL` / `LR_STOP` status | Closed automatically, with a warning. | partial |
@@ -142,7 +142,7 @@ warning.
 
 | `.prm` setting | Data source setting | Status |
 |---|---|---|
-| `SelectNextRow="Sequential"` | `sequential` | partial: LoadRunner gives each Vuser its own cursor, while Phoenix shares one |
+| `SelectNextRow="Sequential"` | `sequential` | partial: LoadRunner gives each Vuser its own cursor, while Load Meter shares one |
 | `SelectNextRow="Random"` | `random` | supported |
 | `SelectNextRow="Unique"` | `unique` | supported |
 | `SelectNextRow="Same line as X"` | Same row as X | supported |
@@ -155,7 +155,7 @@ warning.
 
 **Other parameter types:**
 
-| Type | Phoenix mapping | Status |
+| Type | Load Meter mapping | Status |
 |---|---|---|
 | Date/Time (`Format=` strftime) | `${__timestamp(fmt)}`. Only `%Y %m %d %H %M %S` convert; other formats fall back to epoch milliseconds. | supported, or partial for unconvertible formats |
 | Random Number (`MinValue` / `MaxValue`) | `${__randomInt(a,b)}` | supported |
@@ -167,7 +167,7 @@ warning.
 
 **Run-time settings:**
 
-| Setting | Phoenix mapping | Status |
+| Setting | Load Meter mapping | Status |
 |---|---|---|
 | `default.usp [RunLogicRunRoot] RunLogicNumOfIterations`, or `default.cfg [Iterations] NumOfIterations` | Executor `per-vu-iterations` with `vus=1`. The VU count belongs to the Controller scenario (`.lrs`), which is not part of a script. | supported |
 | `RunLogicPaceType="Const"` + `RunLogicPaceConstTime` | `workload.pacing` | supported |
@@ -209,7 +209,7 @@ always show up in the report:
   TruClient/browser, RDP, Java, .NET, mobile and so on), whose replay engines
   are proprietary.
 * **Arbitrary C logic** in action files or `globals.h`, and the C runtime it
-  links against. Phoenix only models request, transaction, think, set, loop,
+  links against. Load Meter only models request, transaction, think, set, loop,
   if and group steps.
 * **HTML-mode browser emulation:** automatic download of embedded resources
   (`Mode=HTML`, `EXTRARES`), `web_submit_form` / `web_link` / `web_image`,

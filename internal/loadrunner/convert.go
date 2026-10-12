@@ -10,7 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 // importer holds conversion state for one script. Request-scoped state
@@ -25,9 +25,9 @@ type importer struct {
 
 	lb, rb    string // parameter braces, "{" and "}" by default
 	params    map[string]*paramDef
-	known     map[string]bool   // parameter names that become Phoenix variables
+	known     map[string]bool   // parameter names that become Load Meter variables
 	arrays    map[string]bool   // names registered with Ord=ALL
-	funcs     map[string]string // parameter name -> Phoenix function expression
+	funcs     map[string]string // parameter name -> Load Meter function expression
 	userFuncs map[string]string // custom C function name -> defining file
 	once      map[string]bool
 	warnedRef map[string]bool
@@ -140,7 +140,7 @@ func (im *importer) external(f string) {
 
 var identRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// sub rewrites LoadRunner {Param} references into Phoenix ${Param}. Only
+// sub rewrites LoadRunner {Param} references into Load Meter ${Param}. Only
 // names that are declared (.prm) or registered by the script are rewritten;
 // other identifier-like braces are left verbatim and reported once.
 func (im *importer) sub(s, loc string) string {
@@ -162,7 +162,7 @@ func (im *importer) sub(s, loc string) string {
 		}
 		name := s[i+len(lb) : i+len(lb)+j]
 		if lb == "{" && i > 0 && s[i-1] == '$' {
-			// already Phoenix syntax (or a literal "${"): keep as is
+			// already Load Meter syntax (or a literal "${"): keep as is
 			out.WriteString(s[:i+len(lb)])
 			s = s[i+len(lb):]
 			continue
@@ -390,7 +390,7 @@ func (im *importer) stmt(f *cFile, s *stmt, b *builder) {
 				lost++
 			}
 		})
-		note := fmt.Sprintf("C %s statement is not converted (Phoenix has no general control flow import)", s.keyword)
+		note := fmt.Sprintf("C %s statement is not converted (Load Meter has no general control flow import)", s.keyword)
 		if lost > 0 {
 			note += fmt.Sprintf("; %d HTTP request call(s) inside were NOT imported", lost)
 		}
@@ -516,7 +516,7 @@ func (im *importer) call(f *cFile, s *stmt, b *builder) {
 	loc := im.loc(f, c.line)
 	if strings.HasPrefix(s.keyword, "assign:") {
 		im.rep.Add(c.name, strings.TrimPrefix(s.keyword, "assign:"), loc, model.Partial,
-			"return value assigned to C variable "+strings.TrimPrefix(s.keyword, "assign:")+" is not available in Phoenix")
+			"return value assigned to C variable "+strings.TrimPrefix(s.keyword, "assign:")+" is not available in Load Meter")
 		im.customCode(f, c.line, "assignment", s.excerpt)
 	}
 	switch c.name {
@@ -603,7 +603,7 @@ func (im *importer) call(f *cFile, s *stmt, b *builder) {
 			switch st := c.args[len(c.args)-1].text; st {
 			case "LR_AUTO", "LR_PASS":
 			default:
-				im.rep.Add(c.name, n, loc, model.Partial, "forced transaction status "+st+" is not reproduced; Phoenix derives status from request results")
+				im.rep.Add(c.name, n, loc, model.Partial, "forced transaction status "+st+" is not reproduced; Load Meter derives status from request results")
 			}
 		}
 	case "lr_think_time":
@@ -665,25 +665,25 @@ func (im *importer) call(f *cFile, s *stmt, b *builder) {
 		im.setUser(c, loc)
 	case "web_set_cookie":
 		v, _, _ := firstStr(c)
-		im.rep.Add(c.name, v, loc, model.Partial, "explicit cookie not imported; Phoenix manages cookies from Set-Cookie responses")
+		im.rep.Add(c.name, v, loc, model.Partial, "explicit cookie not imported; Load Meter manages cookies from Set-Cookie responses")
 		im.rep.Manual = append(im.rep.Manual, fmt.Sprintf("%s: cookie %q was set explicitly; add a Cookie header or a setup request that sets it", loc, v))
 	case "web_cleanup_cookies":
 		if im.role == "init" {
-			im.rep.Add(c.name, "", loc, model.Ignored, "every Phoenix VU starts with an empty cookie jar")
+			im.rep.Add(c.name, "", loc, model.Ignored, "every Load Meter VU starts with an empty cookie jar")
 		} else {
 			im.rep.Add(c.name, "", loc, model.Partial, "clearing cookies mid-iteration is not supported; cookies persist for the VU")
 		}
 	case "web_set_max_html_param_len":
-		im.ignoredOnce(c.name, c.name, "", loc, "Phoenix has no per-parameter length limit")
+		im.ignoredOnce(c.name, c.name, "", loc, "Load Meter has no per-parameter length limit")
 	case "web_cache_cleanup":
-		im.ignoredOnce(c.name, c.name, "", loc, "Phoenix does not emulate a browser cache")
+		im.ignoredOnce(c.name, c.name, "", loc, "Load Meter does not emulate a browser cache")
 	case "web_set_sockets_option":
 		opt, _, _ := firstStr(c)
 		switch strings.ToUpper(opt) {
 		case "IGNORE_PREMATURE_SHUTDOWN", "CLOSE_KEEPALIVE_CONNECTIONS", "OVERRIDE_CONNECTION_REUSE":
-			im.rep.Add(c.name, opt, loc, model.Ignored, "socket tuning option not applicable to Phoenix's HTTP client")
+			im.rep.Add(c.name, opt, loc, model.Ignored, "socket tuning option not applicable to Load Meter's HTTP client")
 		default:
-			im.rep.Add(c.name, opt, loc, model.Partial, "socket/TLS option not mapped; Phoenix negotiates TLS with Go defaults")
+			im.rep.Add(c.name, opt, loc, model.Partial, "socket/TLS option not mapped; Load Meter negotiates TLS with Go defaults")
 		}
 	default:
 		switch {
@@ -692,7 +692,7 @@ func (im *importer) call(f *cFile, s *stmt, b *builder) {
 		case im.userFuncs[c.name] != "":
 			im.rep.Add(c.name, "", loc, model.Unsupported, fmt.Sprintf("call to custom C function defined in %s is not imported. Excerpt: %s", im.userFuncs[c.name], s.excerpt))
 			im.customCode(f, c.line, "custom-function-call", s.excerpt)
-			im.rep.Manual = append(im.rep.Manual, fmt.Sprintf("%s: re-create custom function %s() with Phoenix steps", loc, c.name))
+			im.rep.Manual = append(im.rep.Manual, fmt.Sprintf("%s: re-create custom function %s() with Load Meter steps", loc, c.name))
 		default:
 			if proto := protocolOf(c.name); proto != "" {
 				im.rep.Add(c.name, "", loc, model.Unsupported, fmt.Sprintf("%s protocol function; requires the licensed LoadRunner runtime. Excerpt: %s", proto, s.excerpt))
@@ -749,7 +749,7 @@ var requestIgnoredAttrs = map[string]string{
 	"resource":        "Resource flag only affects LoadRunner's resource statistics",
 	"reccontenttype":  "RecContentType is recording metadata",
 	"snapshot":        "Snapshot refers to VuGen recording snapshots",
-	"mode":            "Mode=HTML makes LoadRunner parse pages and fetch embedded resources automatically; Phoenix replays only the explicit requests",
+	"mode":            "Mode=HTML makes LoadRunner parse pages and fetch embedded resources automatically; Load Meter replays only the explicit requests",
 	"targetframe":     "TargetFrame is browser-frame metadata",
 	"encodeatsign":    "EncodeAtSign is not applicable",
 	"contentencoding": "ContentEncoding is recording metadata",
@@ -1158,7 +1158,7 @@ func (im *importer) searchFilters(c *cCall, a *lrArgs, loc string, ex *model.Ext
 			return
 		}
 		*status = model.Partial
-		*notes = append(*notes, "Scope=Headers: Phoenix applies this extractor to the response body; consider a header extractor")
+		*notes = append(*notes, "Scope=Headers: Load Meter applies this extractor to the response body; consider a header extractor")
 	case "cookies":
 		*status = model.Partial
 		*notes = append(*notes, "Scope=Cookies: consider a cookie extractor")
@@ -1275,7 +1275,7 @@ func (im *importer) regSaveParamRegexp(f *cFile, c *cCall) {
 			ex.Group = n
 			if n == 0 {
 				status = model.Partial
-				notes = append(notes, "Group=0 (whole match) cannot be distinguished from the default in Phoenix")
+				notes = append(notes, "Group=0 (whole match) cannot be distinguished from the default in Load Meter")
 			}
 		}
 	}
@@ -1305,7 +1305,7 @@ func (im *importer) regSaveParamXPath(f *cFile, c *cCall) {
 		return
 	}
 	ex := model.Extractor{Name: name, Type: model.ExXPath, Expr: q, Required: notFoundRequired(a.val("NotFound"))}
-	notes := []string{"LoadRunner evaluates XPath on HTML/XML with its own engine; Phoenix supports a subset of XPath on well-formed XML — verify the expression"}
+	notes := []string{"LoadRunner evaluates XPath on HTML/XML with its own engine; Load Meter supports a subset of XPath on well-formed XML — verify the expression"}
 	status := model.Partial
 	im.applyOrdinal(&ex, a.val("Ordinal"), &notes, &status)
 	im.searchFilters(c, &a, loc, &ex, &notes, &status)
@@ -1375,7 +1375,7 @@ func (im *importer) regFind(f *cFile, c *cCall) {
 	}
 	if s := strings.ToLower(a.val("Search")); s == "headers" {
 		status = model.Partial
-		notes = append(notes, "Search=Headers: Phoenix body assertions do not search headers")
+		notes = append(notes, "Search=Headers: Load Meter body assertions do not search headers")
 	}
 	for _, at := range a.attrs {
 		switch strings.ToLower(at.key) {
@@ -1428,7 +1428,7 @@ func (im *importer) setTimeout(c *cCall, loc string) {
 	}
 	st, note := model.Supported, "defaults.timeout = "+time.Duration(im.sc.Defaults.Timeout).String()
 	if kind != "STEP" && kind != "RECEIVE" {
-		st, note = model.Partial, note+fmt.Sprintf("; Phoenix has a single request timeout (%s timeout folded in, largest value kept)", kind)
+		st, note = model.Partial, note+fmt.Sprintf("; Load Meter has a single request timeout (%s timeout folded in, largest value kept)", kind)
 	}
 	im.rep.Add(c.name, kind, loc, st, note)
 }
@@ -1459,7 +1459,7 @@ func (im *importer) setUser(c *cCall, loc string) {
 		host = vals[2]
 	}
 	if strings.Contains(user+pass, im.lb) {
-		im.rep.Add(c.name, user, loc, model.Unsupported, "credentials use parameters; Phoenix cannot base64-encode at run time")
+		im.rep.Add(c.name, user, loc, model.Unsupported, "credentials use parameters; Load Meter cannot base64-encode at run time")
 		im.rep.Manual = append(im.rep.Manual, fmt.Sprintf("%s: add an Authorization header for %s (web_set_user with parameters)", loc, host))
 		return
 	}

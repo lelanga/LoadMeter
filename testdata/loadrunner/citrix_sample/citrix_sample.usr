@@ -1,4 +1,4 @@
-; Hand-written Phoenix test fixture: a non-web (Citrix ICA) script.
+; Hand-written Load Meter test fixture: a non-web (Citrix ICA) script.
 [General]
 Type=Citrix_ICA
 AdditionalTypes=Citrix_ICA

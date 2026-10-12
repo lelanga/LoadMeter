@@ -1,10 +1,10 @@
-; Hand-written Phoenix test fixture (original content, not a recording).
+; Hand-written Load Meter test fixture (original content, not a recording).
 [General]
 Type=Multi
 AdditionalTypes=QTWeb
 ActiveTypes=QTWeb
 GenerateTypes=QTWeb
-ParameterFile=phoenix_shop.prm
+ParameterFile=loadmeter_shop.prm
 DefaultCfg=default.cfg
 DefaultRunLogic=default.usp
 [Actions]

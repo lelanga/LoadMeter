@@ -22,9 +22,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/browser"
-	"github.com/lelanga/phoenix/internal/har"
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/browser"
+	"github.com/lelanga/loadmeter/internal/har"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 // MaxRecordingDuration is the auto-stop limit for a recording session.

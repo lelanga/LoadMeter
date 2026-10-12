@@ -1,6 +1,6 @@
 {
   "openapi": "3.0.3",
-  "info": {"title": "Petstore-like API", "version": "1.2.0", "description": "Fixture for the Phoenix OpenAPI importer."},
+  "info": {"title": "Petstore-like API", "version": "1.2.0", "description": "Fixture for the Load Meter OpenAPI importer."},
   "servers": [{"url": "http://127.0.0.1:{port}/v1", "variables": {"port": {"default": "8099"}}}],
   "tags": [{"name": "pets"}, {"name": "store"}],
   "security": [{"bearerAuth": []}],

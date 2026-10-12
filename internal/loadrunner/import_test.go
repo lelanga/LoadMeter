@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 const webDir = "../../testdata/loadrunner/webtours_sample"
@@ -120,7 +120,7 @@ func TestImportWebToursSample(t *testing.T) {
 	if len(lp.Assert) != 1 || lp.Assert[0] != (model.Assertion{Type: model.AsContains, Value: "<form"}) {
 		t.Fatalf("login-page assert = %+v", lp.Assert)
 	}
-	if header(lp, "Referer") != "" || header(lp, "X-Client") != "phoenix-sample" {
+	if header(lp, "Referer") != "" || header(lp, "X-Client") != "loadmeter-sample" {
 		t.Fatalf("login-page headers = %+v", lp.Headers)
 	}
 
@@ -200,7 +200,7 @@ func TestImportWebToursSample(t *testing.T) {
 
 	// Teardown: auto header still active, removed afterwards.
 	td := requests(sc.Teardown)
-	if len(td) != 1 || td[0].Request.URL != "http://127.0.0.1:8080/" || header(td[0].Request, "X-Client") != "phoenix-sample" {
+	if len(td) != 1 || td[0].Request.URL != "http://127.0.0.1:8080/" || header(td[0].Request, "X-Client") != "loadmeter-sample" {
 		t.Fatalf("teardown = %+v", sc.Teardown)
 	}
 
@@ -271,7 +271,7 @@ func TestImportWebToursSample(t *testing.T) {
 	if it := findItem(rep, "global declaration", "globals.h:"+fmt.Sprint(lineOf(t, webDir, "globals.h", "g_orders_placed"))); it == nil || it.Status != model.Partial {
 		t.Fatalf("globals.h item = %+v", it)
 	}
-	if rep.Format != "loadrunner" || rep.Source != "phoenix_shop.usr" || rep.Confidence == "" || rep.Validated != "not-run" {
+	if rep.Format != "loadrunner" || rep.Source != "loadmeter_shop.usr" || rep.Confidence == "" || rep.Validated != "not-run" {
 		t.Fatalf("report header = %+v", rep)
 	}
 	if len(rep.Manual) < 2 {
@@ -335,8 +335,8 @@ func TestAnalyzeWebToursSample(t *testing.T) {
 	for _, f := range an.Files {
 		roles[f.File] = f.Role
 	}
-	for file, role := range map[string]string{"phoenix_shop.usr": "usr", "vuser_init.c": "init", "vuser_end.c": "end", "globals.h": "globals",
-		"phoenix_shop.prm": "parameters", "users.dat": "data", "default.cfg": "runtime-settings", "default.usp": "runtime-settings"} {
+	for file, role := range map[string]string{"loadmeter_shop.usr": "usr", "vuser_init.c": "init", "vuser_end.c": "end", "globals.h": "globals",
+		"loadmeter_shop.prm": "parameters", "users.dat": "data", "default.cfg": "runtime-settings", "default.usp": "runtime-settings"} {
 		if roles[file] != role {
 			t.Errorf("role of %s = %q, want %q", file, roles[file], role)
 		}
