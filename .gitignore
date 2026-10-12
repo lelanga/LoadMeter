@@ -1,0 +1,7 @@
+/dist/
+/bin/
+*.exe
+/phoenix-workspace/
+/runs/
+*.jtl
+.env

@@ -1,0 +1,70 @@
+{
+  "version": "phoenix/v1",
+  "name": "Mock shop: login, browse, order",
+  "description": "Sample business flow against the bundled mock server: HTML login with a hidden anti-forgery token, JSON browse, and an order that needs CSRF and session correlation.",
+  "defaults": {
+    "baseUrl": "${baseUrl}",
+    "timeout": "10s",
+    "headers": [{"name": "Accept", "value": "application/json, text/html"}]
+  },
+  "variables": {"baseUrl": "http://127.0.0.1:8099"},
+  "dataSources": [
+    {"name": "users", "file": "users.csv", "mode": "sequential", "onExhaust": "recycle"}
+  ],
+  "steps": [
+    {"type": "transaction", "name": "01_login", "steps": [
+      {"type": "request", "name": "GET /login-page", "request": {
+        "method": "GET", "url": "/login-page",
+        "extract": [{"name": "rvt", "type": "regex", "expr": "name=\"__RequestVerificationToken\" value=\"([^\"]+)\"", "required": true}],
+        "assert": [{"type": "status", "value": "200"}]
+      }},
+      {"type": "request", "name": "POST /login", "request": {
+        "method": "POST", "url": "/login",
+        "form": [
+          {"name": "__RequestVerificationToken", "value": "${rvt}"},
+          {"name": "username", "value": "${username}"},
+          {"name": "password", "value": "${password}"}
+        ],
+        "extract": [
+          {"name": "csrf", "type": "header", "expr": "X-CSRF-Token", "required": true},
+          {"name": "token", "type": "jsonpath", "expr": "$.token", "required": true}
+        ],
+        "assert": [{"type": "status", "value": "200"}, {"type": "jsonpath", "expr": "$.user.name", "value": "${username}"}]
+      }}
+    ]},
+    {"type": "think", "think": {"min": "200ms", "max": "500ms"}},
+    {"type": "transaction", "name": "02_browse", "steps": [
+      {"type": "request", "name": "GET /api/items", "request": {
+        "method": "GET", "url": "/api/items?q=${__urlencode(${item})}",
+        "assert": [{"type": "status", "value": "200"}, {"type": "contains", "value": "SKU-001"}]
+      }},
+      {"type": "request", "name": "GET /api/profile", "request": {
+        "method": "GET", "url": "/api/profile",
+        "headers": [{"name": "Authorization", "value": "Bearer ${token}"}],
+        "assert": [{"type": "status", "value": "200"}]
+      }}
+    ]},
+    {"type": "think", "think": {"min": "200ms", "max": "500ms"}},
+    {"type": "transaction", "name": "03_order", "steps": [
+      {"type": "request", "name": "POST /api/orders", "request": {
+        "method": "POST", "url": "/api/orders",
+        "headers": [{"name": "Content-Type", "value": "application/json"}, {"name": "X-CSRF-Token", "value": "${csrf}"}],
+        "body": "{\"item\": \"${item}\", \"qty\": 1}",
+        "extract": [{"name": "orderId", "type": "jsonpath", "expr": "$.orderId", "required": true}],
+        "assert": [{"type": "status", "value": "201"}]
+      }},
+      {"type": "request", "name": "GET /api/orders/{id}", "request": {
+        "method": "GET", "url": "/api/orders/${orderId}",
+        "assert": [{"type": "status", "value": "200"}, {"type": "jsonpath", "expr": "$.orderId", "value": "${orderId}"}]
+      }}
+    ]}
+  ],
+  "workload": {"executor": "ramping-vus", "vus": 0, "stages": [
+    {"duration": "5s", "target": 10}, {"duration": "10s", "target": 10}, {"duration": "3s", "target": 0}
+  ], "gracefulStop": "5s"},
+  "slas": [
+    {"metric": "p95", "op": "<", "threshold": 500},
+    {"metric": "error_rate", "op": "<", "threshold": 1},
+    {"metric": "p95", "scope": "03_order", "op": "<", "threshold": 800}
+  ]
+}

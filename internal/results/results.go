@@ -1,0 +1,384 @@
+// Package results turns a finished run into a persisted Summary, evaluates SLAs,
+// compares runs and derives evidence-based findings.
+package results
+
+import (
+	"encoding/csv"
+	"encoding/json"
+	"fmt"
+	"math"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/lelanga/phoenix/internal/metrics"
+	"github.com/lelanga/phoenix/internal/model"
+)
+
+type SLAResult struct {
+	model.SLA
+	Actual float64 `json:"actual"`
+	Passed bool    `json:"passed"`
+	Note   string  `json:"note,omitempty"`
+}
+
+type Finding struct {
+	Kind     string `json:"kind"`     // observation | hypothesis
+	Severity string `json:"severity"` // info | warning | critical
+	Title    string `json:"title"`
+	Evidence string `json:"evidence"`
+}
+
+type Environment struct {
+	Phoenix   string `json:"phoenixVersion"`
+	GoVersion string `json:"goVersion"`
+	OS        string `json:"os"`
+	Arch      string `json:"arch"`
+	CPUs      int    `json:"cpus"`
+	Hostname  string `json:"hostname"`
+}
+
+type Summary struct {
+	RunID      string           `json:"runId"`
+	Scenario   string           `json:"scenario"`
+	Status     string           `json:"status"`
+	StartedAt  time.Time        `json:"startedAt"`
+	EndedAt    time.Time        `json:"endedAt"`
+	DurationS  float64          `json:"durationSec"`
+	Workload   model.Workload   `json:"workload"`
+	Snapshot   metrics.Snapshot `json:"metrics"`
+	SLAs       []SLAResult      `json:"slas,omitempty"`
+	SLAPassed  bool             `json:"slaPassed"`
+	Findings   []Finding        `json:"findings,omitempty"`
+	Env        Environment      `json:"environment"`
+	DataConfig []string         `json:"dataConfig,omitempty"`
+	Baseline   *Comparison      `json:"baseline,omitempty"`
+	Notes      []string         `json:"notes,omitempty"`
+}
+
+var Version = "0.1.0-dev"
+
+func Env() Environment {
+	h, _ := os.Hostname()
+	return Environment{Phoenix: Version, GoVersion: runtime.Version(), OS: runtime.GOOS, Arch: runtime.GOARCH, CPUs: runtime.NumCPU(), Hostname: h}
+}
+
+func NewRunID(name string) string {
+	safe := strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' {
+			return r
+		}
+		return '-'
+	}, name)
+	if len(safe) > 40 {
+		safe = safe[:40]
+	}
+	return time.Now().UTC().Format("20060102-150405") + "-" + strings.Trim(safe, "-")
+}
+
+// Build creates the summary from a finished collector.
+func Build(runID string, sc *model.Scenario, col *metrics.Collector, start, end time.Time, status string) *Summary {
+	snap := col.Snapshot(end, 0)
+	s := &Summary{RunID: runID, Scenario: sc.Name, Status: status, StartedAt: start, EndedAt: end,
+		DurationS: math.Round(end.Sub(start).Seconds()*100) / 100, Workload: sc.Workload, Snapshot: snap, Env: Env()}
+	for _, d := range sc.DataSources {
+		mode := d.Mode
+		if mode == "" {
+			mode = "sequential"
+		}
+		s.DataConfig = append(s.DataConfig, fmt.Sprintf("%s: mode=%s onExhaust=%s scope=%s rows=%s", d.Name, mode, or(d.OnExhaust, "recycle"), or(d.Scope, "iteration"), rowsDesc(d)))
+	}
+	s.SLAs, s.SLAPassed = EvaluateSLAs(sc.SLAs, col, snap)
+	s.Findings = Diagnose(snap, s.SLAs)
+	return s
+}
+
+func or(a, b string) string {
+	if a == "" {
+		return b
+	}
+	return a
+}
+
+func rowsDesc(d model.DataSource) string {
+	if d.File != "" {
+		return "file " + d.File
+	}
+	return strconv.Itoa(len(d.Rows)) + " inline"
+}
+
+func EvaluateSLAs(slas []model.SLA, col *metrics.Collector, snap metrics.Snapshot) ([]SLAResult, bool) {
+	all := true
+	var out []SLAResult
+	for _, sla := range slas {
+		r := SLAResult{SLA: sla}
+		set, kind, found := findSet(snap, sla.Scope)
+		if !found {
+			r.Note = "no samples for scope " + sla.Scope
+			r.Passed = false
+			all = false
+			out = append(out, r)
+			continue
+		}
+		switch sla.Metric {
+		case "p50", "p90", "p95", "p99":
+			q, _ := strconv.ParseFloat(sla.Metric[1:], 64)
+			v, _ := col.Quantile(kind, sla.Scope, q/100)
+			r.Actual = math.Round(v*100) / 100
+		case "avg":
+			r.Actual = set.AvgMs
+		case "max":
+			r.Actual = set.MaxMs
+		case "error_rate":
+			r.Actual = set.ErrorRate
+		case "rps":
+			r.Actual = set.RPS
+		default:
+			r.Note = "unknown metric"
+		}
+		r.Passed = r.Note == "" && compare(r.Actual, sla.Op, sla.Threshold)
+		all = all && r.Passed
+		out = append(out, r)
+	}
+	return out, all
+}
+
+func findSet(s metrics.Snapshot, scope string) (metrics.MetricSet, string, bool) {
+	if scope == "" {
+		return s.Requests, metrics.KindRequest, s.Requests.Count > 0
+	}
+	for _, n := range s.ByTx {
+		if n.Name == scope {
+			return n.MetricSet, metrics.KindTransaction, true
+		}
+	}
+	for _, n := range s.ByRequest {
+		if n.Name == scope {
+			return n.MetricSet, metrics.KindRequest, true
+		}
+	}
+	return metrics.MetricSet{}, "", false
+}
+
+func compare(a float64, op string, b float64) bool {
+	switch op {
+	case "<":
+		return a < b
+	case "<=":
+		return a <= b
+	case ">":
+		return a > b
+	case ">=":
+		return a >= b
+	}
+	return false
+}
+
+// Diagnose produces findings; observations are measured facts, hypotheses are labelled.
+func Diagnose(s metrics.Snapshot, slas []SLAResult) []Finding {
+	var f []Finding
+	if s.Requests.Count == 0 {
+		return []Finding{{Kind: "observation", Severity: "critical", Title: "No requests completed", Evidence: "0 request samples were recorded."}}
+	}
+	// Slowest request by p95 (needs a minimum sample size).
+	var slow *metrics.Named
+	for i := range s.ByRequest {
+		n := &s.ByRequest[i]
+		if n.Count >= 5 && (slow == nil || n.P95Ms > slow.P95Ms) {
+			slow = n
+		}
+	}
+	if slow != nil {
+		f = append(f, Finding{Kind: "observation", Severity: "info", Title: "Highest-latency request: " + slow.Name,
+			Evidence: fmt.Sprintf("p95 %.1f ms, p99 %.1f ms over %d samples (overall p95 %.1f ms).", slow.P95Ms, slow.P99Ms, slow.Count, s.Requests.P95Ms)})
+	}
+	if s.Requests.ErrorRate > 0 {
+		kinds := make([]string, 0, len(s.Requests.ErrorKind))
+		for k, v := range s.Requests.ErrorKind {
+			kinds = append(kinds, fmt.Sprintf("%s=%d", k, v))
+		}
+		sort.Strings(kinds)
+		sev := "warning"
+		if s.Requests.ErrorRate >= 5 {
+			sev = "critical"
+		}
+		f = append(f, Finding{Kind: "observation", Severity: sev, Title: fmt.Sprintf("Error rate %.2f%%", s.Requests.ErrorRate),
+			Evidence: fmt.Sprintf("%d of %d requests failed (%s).", s.Requests.Errors, s.Requests.Count, strings.Join(kinds, ", "))})
+	}
+	// Auth/correlation hint: 401/403 responses.
+	var authFails uint64
+	for code, n := range s.Requests.Status {
+		if code == "401" || code == "403" {
+			authFails += n
+		}
+	}
+	if authFails > 0 {
+		f = append(f, Finding{Kind: "hypothesis", Severity: "warning", Title: "Possible authentication or correlation failure",
+			Evidence: fmt.Sprintf("%d responses were 401/403. Check for expired tokens, missing CSRF/session correlation or wrong test credentials.", authFails)})
+	}
+	if s.Requests.ErrorKind["blocked_by_policy"] > 0 {
+		f = append(f, Finding{Kind: "observation", Severity: "critical", Title: "Requests blocked by the safety allowlist",
+			Evidence: fmt.Sprintf("%d requests targeted hosts that are not allowlisted.", s.Requests.ErrorKind["blocked_by_policy"])})
+	}
+	// Errors rising with load: compare error rate in the first and second half of the timeline.
+	if tl := s.Timeline; len(tl) >= 6 {
+		h := len(tl) / 2
+		e1, r1, e2, r2, v1, v2 := 0.0, 0.0, 0.0, 0.0, 0, 0
+		for i, w := range tl {
+			if i < h {
+				e1 += float64(w.Errors)
+				r1 += w.RPS
+				v1 = max(v1, w.VUs)
+			} else {
+				e2 += float64(w.Errors)
+				r2 += w.RPS
+				v2 = max(v2, w.VUs)
+			}
+		}
+		if r1 > 0 && r2 > 0 && v2 > v1 && e2/r2 > 2*e1/r1+0.01 {
+			f = append(f, Finding{Kind: "observation", Severity: "warning", Title: "Errors increased as load increased",
+				Evidence: fmt.Sprintf("Error rate %.2f%% (peak %d VUs) in the first half vs %.2f%% (peak %d VUs) in the second half.", e1/r1*100, v1, e2/r2*100, v2)})
+		}
+		// Load generator saturation.
+		var hiCPU int
+		for _, w := range tl {
+			if w.CPU > float64(runtime.NumCPU())*100*0.85 {
+				hiCPU++
+			}
+		}
+		if hiCPU > 0 {
+			f = append(f, Finding{Kind: "hypothesis", Severity: "warning", Title: "Load generator may be a bottleneck",
+				Evidence: fmt.Sprintf("Generator CPU exceeded 85%% of available cores in %d of %d seconds; measured latency may include client-side queuing.", hiCPU, len(tl))})
+		}
+	}
+	if s.Dropped > 0 {
+		f = append(f, Finding{Kind: "observation", Severity: "warning", Title: "Iterations dropped (VU pool exhausted)",
+			Evidence: fmt.Sprintf("%d scheduled iterations could not start because all %s VUs were busy; raise maxVUs or investigate slow responses.", s.Dropped, "allocated")})
+	}
+	for _, r := range slas {
+		if !r.Passed {
+			scope := r.Scope
+			if scope == "" {
+				scope = "all requests"
+			}
+			f = append(f, Finding{Kind: "observation", Severity: "critical", Title: fmt.Sprintf("SLA breached: %s %s %s %g", scope, r.Metric, r.Op, r.Threshold),
+				Evidence: fmt.Sprintf("Actual %g. %s", r.Actual, r.Note)})
+		}
+	}
+	return f
+}
+
+// ---------- Comparison ----------
+
+type Delta struct {
+	Name     string  `json:"name"`
+	Metric   string  `json:"metric"`
+	Baseline float64 `json:"baseline"`
+	Current  float64 `json:"current"`
+	Change   float64 `json:"changePercent"`
+	Worse    bool    `json:"worse"`
+}
+
+type Comparison struct {
+	BaselineRun string  `json:"baselineRun"`
+	Deltas      []Delta `json:"deltas"`
+	Regressions int     `json:"regressions"`
+	Note        string  `json:"note"`
+}
+
+// Compare reports metric deltas; regressions use a 10% + 5ms threshold for latency.
+func Compare(base, cur *Summary) *Comparison {
+	c := &Comparison{BaselineRun: base.RunID, Note: "Latency regression = >10% and >5ms worse; error regression = +1 percentage point. Percentiles come from each run's full histogram."}
+	add := func(name string, b, n metrics.MetricSet) {
+		for _, m := range []struct {
+			k    string
+			a, z float64
+			lat  bool
+		}{{"p50Ms", b.P50Ms, n.P50Ms, true}, {"p95Ms", b.P95Ms, n.P95Ms, true}, {"p99Ms", b.P99Ms, n.P99Ms, true},
+			{"errorRate", b.ErrorRate, n.ErrorRate, false}, {"rps", b.RPS, n.RPS, false}} {
+			d := Delta{Name: name, Metric: m.k, Baseline: m.a, Current: m.z}
+			if m.a > 0 {
+				d.Change = math.Round((m.z-m.a)/m.a*10000) / 100
+			}
+			switch {
+			case m.lat:
+				d.Worse = m.z > m.a*1.1 && m.z-m.a > 5
+			case m.k == "errorRate":
+				d.Worse = m.z-m.a >= 1
+			}
+			if d.Worse {
+				c.Regressions++
+			}
+			c.Deltas = append(c.Deltas, d)
+		}
+	}
+	add("ALL", base.Snapshot.Requests, cur.Snapshot.Requests)
+	bt := map[string]metrics.MetricSet{}
+	for _, n := range base.Snapshot.ByTx {
+		bt[n.Name] = n.MetricSet
+	}
+	for _, n := range cur.Snapshot.ByTx {
+		if b, ok := bt[n.Name]; ok {
+			add("tx:"+n.Name, b, n.MetricSet)
+		}
+	}
+	return c
+}
+
+// ---------- Persistence ----------
+
+func Save(dir string, s *Summary) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "summary.json"), b, 0o644); err != nil {
+		return err
+	}
+	return WriteCSV(filepath.Join(dir, "summary.csv"), s)
+}
+
+func Load(dir string) (*Summary, error) {
+	b, err := os.ReadFile(filepath.Join(dir, "summary.json"))
+	if err != nil {
+		return nil, err
+	}
+	var s Summary
+	if err := json.Unmarshal(b, &s); err != nil {
+		return nil, fmt.Errorf("%s: %w", dir, err)
+	}
+	return &s, nil
+}
+
+// WriteCSV exports per-request and per-transaction statistics.
+func WriteCSV(path string, s *Summary) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	w := csv.NewWriter(f)
+	_ = w.Write([]string{"kind", "name", "count", "errors", "errorRatePct", "rps", "minMs", "avgMs", "p50Ms", "p90Ms", "p95Ms", "p99Ms", "maxMs", "bytesIn", "bytesOut"})
+	row := func(kind string, n string, m metrics.MetricSet) {
+		ff := func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
+		_ = w.Write([]string{kind, n, strconv.FormatUint(m.Count, 10), strconv.FormatUint(m.Errors, 10), ff(m.ErrorRate), ff(m.RPS),
+			ff(m.MinMs), ff(m.AvgMs), ff(m.P50Ms), ff(m.P90Ms), ff(m.P95Ms), ff(m.P99Ms), ff(m.MaxMs),
+			strconv.FormatInt(m.BytesIn, 10), strconv.FormatInt(m.BytesOut, 10)})
+	}
+	row("all", "ALL REQUESTS", s.Snapshot.Requests)
+	for _, n := range s.Snapshot.ByTx {
+		row("transaction", n.Name, n.MetricSet)
+	}
+	for _, n := range s.Snapshot.ByRequest {
+		row("request", n.Name, n.MetricSet)
+	}
+	w.Flush()
+	return w.Error()
+}

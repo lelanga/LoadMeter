@@ -1,0 +1,67 @@
+# COMPETITIVE GAPS AND PRIORITISED BACKLOG
+
+All evidence IDs refer to SOURCE_REGISTER.md. Evidence of "user problem" is a mix of direct feedback and our inference; the backlog states which. Complexity: S/M/L = engineering effort order of magnitude. Priority P0 = must ship in first usable release.
+
+## 1. Gaps Phoenix can address (analysis)
+
+| # | Gap | Evidence | Phoenix angle |
+|---|---|---|---|
+| G1 | Correlation is manual in JMeter and HAR-to-k6; automatic only in commercial tools or k6 Studio rules | S019, S046, S030, S023, S041 | Deterministic candidate detection + replay-based proof + LLM only for ranking/explanation |
+| G2 | Silent correlation failure (script "looks right", hardcoded tokens) | S047, S011 | Mandatory validation run that proves the value was extracted and changed |
+| G3 | Install/runtime weight: JVM + GUI memory; LoadRunner Windows-only authoring with 50-100 GB; Python per-core workers | S015, S017, S048, S026, S045 | Go single binary, no runtime |
+| G4 | Distributed execution is the top setup pain across tools | S013, S017, S022, S026 | Coordinator/agent in same binary, one-flag, TLS by default, no shared files |
+| G5 | Migration friction: JMX estates cannot run elsewhere (k6 cannot run JMX) | S044, S027 | JMX import with compatibility report stating what is unsupported |
+| G6 | Percentile/report inconsistency (dashboard vs aggregate; Locust percentile bugs) | S035, S008 | One documented estimator, tested against reference data, same numbers live and in report |
+| G7 | Live metrics: JMeter graphs unusable during run | S017 | Local web UI with streaming metrics |
+| G8 | Coordinated omission / closed-model traps | S018, S038, S039 | Open-model arrival-rate defaults and warnings |
+| G9 | Docs/guidance gaps for JMeter; steep learning curve | S015, S017 | Guided workflow (record -> correlate -> validate -> run -> report) |
+| G10 | Cost/licensing: bundles, Vuser caps, edition-gated distributed/reporting | S031, S006, S025, S005 | Everything local is free; no per-protocol gating |
+| G11 | AI is vendor-cloud bound (Grafana Cloud, Gatling Enterprise, BlazeMeter, Aviator) | S024, S027, S034, S004 | Local-model support, MCP server with human-in-loop and allowlist |
+| G12 | AI trust: wrong regexes, context limits, token costs, secrets | S011, S032, S034 | AI proposes, deterministic engine verifies; redaction before any model call |
+| G13 | Safety: load tools can hit unintended hosts; unauthenticated control ports (BeanShell example) | S018 | Target allowlist enforced in engine, signed/local control channel |
+| G14 | Weak spots in modern apps: SPAs, WebSocket/SignalR | S005, S004, S044 | Later phase; HAR/WebSocket capture first, browser-level later |
+
+## 2. Prioritised feature backlog
+
+Security column describes implications of building the feature. "Dependencies" use backlog IDs.
+
+| ID | Feature | Evidence | User problem | Complexity | Dependencies | Security implications | Acceptance criteria | Priority |
+|---|---|---|---|---|---|---|---|---|
+| F001 | Single static Go binary (Linux/macOS/Windows), embedded web UI assets, zero runtime deps | S015, S017, S048, S045 | Heavy installs (JVM, Windows-only authoring, Python+build tools) | M | none | Signed releases, checksums, reproducible build | Download one file, run `phoenix ui`, first test runs with no other installs on a clean VM of each OS | P0 |
+| F002 | HTTP/HTTPS/HTTP2 load engine (virtual users, ramp, think time, keep-alive, cookies, redirects) | S018, S020, S044 | Core capability; JMeter/Locust CPU limits | L | F001 | TLS verification on by default; explicit opt-out per test | Runs scripted flow at N VUs; documented throughput on reference hardware; no GC-induced timing drift above stated threshold | P0 |
+| F003 | Open-model (arrival-rate) and closed-model scheduling with coordinated-omission warning | S018, S038, S039, S010 | Misleading latencies when target slows | M | F002 | none beyond DoS-limit guard (F012) | Test with injected slow server shows arrival rate maintained in open mode; UI warns in closed mode | P0 |
+| F004 | HAR import to editable scenario (filter third-party domains/static assets) | S046, S019, S023 | Manual filtering/cleanup; HAR is the open interchange format | M | F002 | HAR contains secrets (cookies, auth); redact/scrub on import, warn on save | Import real HAR; third-party hosts listed and excludable; secrets masked in UI and exports | P0 |
+| F005 | JMX import (subset) plus compatibility report listing supported/unsupported elements and behavioural differences | S044, S027, S028, S002 | Existing JMeter estates cannot move | L | F002, F007 | Never execute embedded Groovy/BeanShell; flag them as unsupported | Corpus of public JMX files imported; report lists every element with status; supported subset runs and matches JMeter request sequence in a recorded comparison | P0 |
+| F006 | Correlation suggestions: deterministic candidate detection (response-to-request value flow, double-recording diff) ranked by confidence | S012, S030, S047, S011 | Correlation is the biggest manual time sink | L | F004, F002 | Extracted tokens held in memory, masked in logs | On benchmark apps with known dynamic values, detector finds a stated share (target set by engineering) and lists false positives; every suggestion shows source response and target request | P0 |
+| F007 | Correlation validation: replay and compare, prove extraction succeeded and value changed, fail loudly on miss (no silent default) | S030, S047, S011 | Silent failures, hardcoded tokens | M | F006 | none | Test run fails if any accepted correlation extracts nothing; report shows before/after values (masked) | P0 |
+| F008 | CSV (and JSON) parameterization: per-VU, shared, sequential/random/unique policies, end-of-data behaviour | S018, S023 | Per-user data; data files not shipped to distributed nodes (JMeter) | M | F002 | Credentials in data files: mask in logs, optional encryption at rest | Unique-per-VU policy verified under concurrency; exhausted data stops or loops per setting | P0 |
+| F009 | Live metrics dashboard (streaming) with correct percentiles (documented estimator, mergeable sketch such as HDR/t-digest) | S035, S008, S017, S036 | Percentile disagreement, no live graphs | M | F002 | Local-only bind by default | Percentiles match offline exact calculation within stated error on reference datasets; identical numbers live vs final report | P0 |
+| F010 | Self-contained HTML report (offline, single file) incl. percentiles, error table, throughput, APDEX-like score | S035, S017, S015 | Reporting gaps; JMeter dashboard gotchas | M | F009 | Report may contain URLs/headers; redaction profile | Report opens offline; numbers equal F009 final; secrets masked | P0 |
+| F011 | Machine-readable results (JSON/CSV) and exit codes with thresholds | S036, S028 | CI gating and downstream analysis | S | F009 | none | `phoenix run --thresholds` returns non-zero on breach; schema documented | P1 |
+| F012 | Safety allowlist: tests only target explicitly allowed hosts/CIDRs; rate and VU caps; confirm-before-run for non-local | S018 (BeanShell control-port risk), inference | Accidental load on third parties/production | M | F002 | Core control; enforced in engine not only UI; includes redirect and DNS-rebinding handling | Request to non-allowlisted host (including via redirect) is blocked and logged; cannot be disabled via MCP/AI | P0 |
+| F013 | MCP server exposing test lifecycle (import, suggest, validate, run, read results) with allowlist and approval gates | S004, S027, S033, S034 | AI-assisted workflows; existing MCP servers only run a JMX | M | F002, F012 | Auth on transport; destructive/running actions require explicit approval; audit log | MCP client can complete import->correlate->validate->run; run action blocked without approval; all calls logged | P0 |
+| F014 | Local model support (Ollama/llama.cpp-compatible endpoint); no mandatory cloud | S040, S024, S034 | Vendor-cloud-bound AI; data leakage concerns | M | F013 | Default no outbound calls; redaction of tokens/PII before any model prompt | Feature works with offline model; network trace shows no external calls in local mode | P0 |
+| F015 | AI-assist boundary: AI proposes (ranking, naming, explanation); engine verifies; AI cannot change engine/safety settings | S011, S032 | Plausible-but-wrong regex/JSONPath | M | F006, F007, F013 | Prompt-injection from response bodies treated as data | Injected text in a response cannot alter allowlist or trigger a run (test suite) | P1 |
+| F016 | Request/response inspector and single-iteration validator ("debug run") | S023, S049, S019 | Debugging recorded scripts | M | F002, F004 | Mask secrets by default | Step through one iteration showing each request/response/extraction | P1 |
+| F017 | Assertions/checks and visible default failure for extractors | S047, S036 | Silent failures | S | F002 | none | Missing extraction marks the sample failed unless explicitly optional | P1 |
+| F018 | Extractors: JSON path, regex, CSS/XPath, header/cookie, boundary | S047, S019 | Fragile regex on structured data | M | F002 | ReDoS protection on regex | Structured extractors preferred in suggestions; regex timeouts enforced | P1 |
+| F019 | Distributed execution: coordinator + agents from same binary, TLS and token auth, no file sync, merged metrics | S013, S017, S022, S026 | Distributed setup pain | L | F002, F009 | Mutual auth; agents only accept signed plans; no open RMI-style ports | Start agents with one command each; run reports merged correct percentiles; works through single outbound connection from agent | P1 |
+| F020 | CLI parity (`run`, `import`, `report`) and CI examples | S018, S021, S050 | CI use, GUI avoided under load | S | F002 | none | Every UI action available in CLI; sample GitHub Actions/GitLab configs tested | P1 |
+| F021 | Test-as-code export/import (open, human-diffable scenario format; JSON/YAML) | S028, S020, S050 | Version control; avoid proprietary binary format | M | F002 | Secrets excluded from files by default | Round-trip lossless; diffs readable; schema published | P1 |
+| F022 | Export to k6/JMX (and import from OpenAPI) for lock-in avoidance and bootstrapping | S024, S044, S028 | Trust, migration both ways | M | F021 | Same as F005 | Exported k6 script runs the same sequence (best effort, documented gaps) | P2 |
+| F023 | Auth flow helpers (OAuth2/OIDC token refresh, CSRF, login once-per-VU) | S047, S011 | Rotating/expiring tokens | M | F007 | Secrets handling | Token refresh scenario passes in test app with short TTL | P2 |
+| F024 | Think-time and pacing models; realistic user mix from HAR timings | S042, S005 | Scenario realism (LoadRunner strength) | M | F004 | none | Pacing config reproduces target iteration rate within tolerance | P2 |
+| F025 | WebSocket and SSE support | S044, S004 | SPA/real-time apps | L | F002 | Same allowlist enforcement | WebSocket scenario with checks | P2 |
+| F026 | gRPC support | S044, S021 | Modern service testing | L | F002 | Reflection/proto handling | Unary and streaming calls with metrics | P3 |
+| F027 | AI result analysis: summarise bottlenecks, regression vs baseline (numbers computed deterministically, narrative by model) | S004, S027, S034 | Reading results is slow | M | F009, F014 | Redact before prompts | Narrative cites computed metrics; unsupported claims blocked by check | P2 |
+| F028 | Baseline comparison and trend storage (local SQLite/files) | S036, S035 | Regression detection | M | F009 | Local data retention controls | Compare two runs with statistical caveat | P2 |
+| F029 | Server-side monitoring ingestion (Prometheus/OTel pull) | S017, S005, S018 | Monitoring gaps (SiteScope dependence, weak real-time monitoring) | M | F009 | Credentials for scrapes | Correlate server CPU with latency in report | P2 |
+| F030 | Plugin/extension API (WASM or process-based) | S029, S044, S007 | JMeter's extensibility is a draw; k6 2.0 broke extensions (secondary claim S034) | L | F002 | Sandbox; capability model | Third-party extension loaded without recompiling; stable API versioning | P3 |
+| F031 | Browser-level (Playwright/CDP) user journey mode | S004, S007, S044 | SPA complexity | L | F002 | Browser sandboxing | Out of first release | P3 |
+| F032 | Guided onboarding / sample targets / in-product docs | S015, S017 | JMeter learning curve, docs gaps | S | F001 | Samples target local-only | New user completes first run in under a stated time in usability test | P1 |
+| F033 | Telemetry opt-in only; usage and crash data off by default | inference | Privacy and corporate approval | S | F001 | Privacy | Default build makes zero outbound calls without opt-in | P1 |
+
+## 3. Notes
+- P0 coverage per brief: single-binary install F001; HTTP engine F002; HAR import F004; JMX import with compat report F005; correlation suggestions F006 with validation F007; CSV parameterization F008; live metrics with correct percentiles F009; HTML report F010; safety allowlist F012; MCP/AI control F013; local model support F014. F003 is added as P0 because open-model correctness underpins "correct" latency.
+- Competitive caution: k6 Studio already offers record, rules and validator; Phoenix differentiation must be detection quality, replay proof, single-binary web UI, JMX migration and local-model AI, not "has a recorder" [S023, S049].
+- Evidence strength warning: Reddit/Stack Overflow were not accessible; priorities rely on review sites, vendor docs and blogs.
