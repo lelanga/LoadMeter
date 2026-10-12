@@ -93,7 +93,7 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprint(w, `<html><head><title>Phoenix Mock Shop</title><script src="/static/app.js"></script></head><body><a href="/login-page">Login</a></body></html>`)
+		fmt.Fprint(w, `<html><head><title>Load Meter Mock Shop</title><script src="/static/app.js"></script></head><body><a href="/login-page">Login</a></body></html>`)
 	}))
 	mux.HandleFunc("GET /static/", count(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "max-age=3600")

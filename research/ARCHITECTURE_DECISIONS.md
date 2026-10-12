@@ -47,7 +47,7 @@ Inputs only; the engineering lead owns final ADRs. Each input states the evidenc
 
 ## RI-11. Licensing and distribution
 - Evidence: k6 Studio is AGPL-3.0 [S049]; Gatling splits community vs enterprise and restricts duration for some plugins [S025]; LoadRunner protocol bundles [S031]; users prize "no licensing cost" for JMeter [S015, S017].
-- Inference: avoid copying AGPL code; avoid feature gating on core run/report/distributed paths if the goal is JMeter accessibility. Licence choice for Phoenix is a business decision outside this research.
+- Inference: avoid copying AGPL code; avoid feature gating on core run/report/distributed paths if the goal is JMeter accessibility. Licence choice for Load Meter is a business decision outside this research.
 
 ## RI-12. Things this research could NOT establish (do not decide on it)
 - Real practitioner sentiment from Reddit/Stack Overflow (blocked).

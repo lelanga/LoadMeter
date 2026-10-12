@@ -1,5 +1,5 @@
 {
-  "version": "phoenix/v1",
+  "version": "loadmeter/v1",
   "name": "Mock shop: login, browse, order",
   "description": "Sample business flow against the bundled mock server: HTML login with a hidden anti-forgery token, JSON browse, and an order that needs CSRF and session correlation.",
   "defaults": {

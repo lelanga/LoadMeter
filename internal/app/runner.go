@@ -13,11 +13,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/lelanga/phoenix/internal/engine"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/report"
-	"github.com/lelanga/phoenix/internal/results"
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/internal/engine"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/report"
+	"github.com/lelanga/loadmeter/internal/results"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 type Workspace struct {
@@ -76,6 +76,8 @@ type Active struct {
 	once     sync.Once
 	summary  *results.Summary
 	err      error
+	cmpOpts  results.CompareOptions
+	finalize func(*results.Summary)
 }
 
 type RunOptions struct {
@@ -86,6 +88,8 @@ type RunOptions struct {
 	MaxIters int
 	Logger   *slog.Logger
 	NoRaw    bool
+	Compare  results.CompareOptions // statistical options for the baseline comparison
+	Finalize func(*results.Summary) // optional: adjust the summary before it is saved
 }
 
 // StartRun prepares and starts a run in the workspace.
@@ -98,7 +102,7 @@ func (w Workspace) StartRun(ctx context.Context, sc *model.Scenario, o RunOption
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	a := &Active{ID: id, Dir: dir, Scenario: sc, baseline: o.Baseline, ws: w}
+	a := &Active{ID: id, Dir: dir, Scenario: sc, baseline: o.Baseline, ws: w, cmpOpts: o.Compare, finalize: o.Finalize}
 	opts := engine.Options{BaseDir: o.BaseDir, Policy: o.Policy, Inspect: o.Inspect, MaxIters: o.MaxIters, Logger: o.Logger, Seed: 42}
 	if !o.NoRaw {
 		f, err := os.Create(filepath.Join(dir, "raw.csv"))
@@ -136,10 +140,15 @@ func (a *Active) Wait() (*results.Summary, error) {
 		}
 		if a.baseline != "" {
 			if b, err := results.Load(filepath.Join(a.ws.RunsDir(), a.baseline)); err == nil {
-				s.Baseline = results.Compare(b, s)
+				co := a.cmpOpts
+				co.BaseDir, co.CurDir = filepath.Join(a.ws.RunsDir(), a.baseline), a.Dir
+				s.Baseline = results.CompareWith(b, s, co)
 			} else {
 				s.Notes = append(s.Notes, "Baseline "+a.baseline+" could not be loaded: "+err.Error())
 			}
+		}
+		if a.finalize != nil {
+			a.finalize(s)
 		}
 		if err := results.Save(a.Dir, s); err != nil {
 			a.err = err

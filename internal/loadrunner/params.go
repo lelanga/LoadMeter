@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 // Parameter (.prm) handling. Key names follow commonly observed VuGen-generated
@@ -88,13 +88,13 @@ func (im *importer) loadParams(prmName string, data []byte) {
 	}
 }
 
-// mapFunctionParam maps generated (non-file) parameter types onto Phoenix
+// mapFunctionParam maps generated (non-file) parameter types onto Load Meter
 // built-in functions.
 func (im *importer) mapFunctionParam(p *paramDef, t string) {
 	each := p.updateOn == "" || p.updateOn == "eachoccurrence"
 	evalNote := ""
 	if !each {
-		evalNote = fmt.Sprintf("; LoadRunner updates it %q but Phoenix evaluates the function at every use", p.sec.val("GenerateNewVal")+p.sec.val("UpdateValueOn"))
+		evalNote = fmt.Sprintf("; LoadRunner updates it %q but Load Meter evaluates the function at every use", p.sec.val("GenerateNewVal")+p.sec.val("UpdateValueOn"))
 	}
 	status := func(base string) string {
 		if !each {
@@ -149,12 +149,12 @@ func (im *importer) mapFunctionParam(p *paramDef, t string) {
 		im.rep.Add("parameter:"+p.typ, p.name, p.loc, model.Supported, "mapped to ${__iteration()}")
 	case "vuserid", "vuser":
 		im.funcs[p.name] = "${__vu()}"
-		im.rep.Add("parameter:"+p.typ, p.name, p.loc, model.Supported, "mapped to ${__vu()} (Phoenix VU index)")
+		im.rep.Add("parameter:"+p.typ, p.name, p.loc, model.Supported, "mapped to ${__vu()} (Load Meter VU index)")
 	case "groupname", "group", "loadgeneratorname", "host", "hostname", "loadgenerator":
 		v := p.sec.val("OriginalValue")
 		im.sc.Variables[p.name] = v
 		im.rep.Add("parameter:"+p.typ, p.name, p.loc, model.Partial,
-			fmt.Sprintf("Controller/host attribute has no Phoenix equivalent; set as constant variable %q", v))
+			fmt.Sprintf("Controller/host attribute has no Load Meter equivalent; set as constant variable %q", v))
 	default:
 		im.sc.Variables[p.name] = p.sec.val("OriginalValue")
 		im.rep.Add("parameter:"+p.typ, p.name, p.loc, model.Unsupported,
@@ -300,7 +300,7 @@ func (im *importer) loadTable(ps []*paramDef) {
 	case drv.selectBy == "" || drv.selectBy == "sequential":
 		ds.Mode = "sequential"
 		modeStatus = model.Partial
-		modeNote = "SelectNextRow=Sequential: LoadRunner gives every Vuser its own cursor from row 1; Phoenix 'sequential' shares one cursor across VUs (use mode per-vu or an identical data file per VU if the same rows per VU are required)"
+		modeNote = "SelectNextRow=Sequential: LoadRunner gives every Vuser its own cursor from row 1; Load Meter 'sequential' shares one cursor across VUs (use mode per-vu or an identical data file per VU if the same rows per VU are required)"
 	case drv.selectBy == "random":
 		ds.Mode = "random"
 	case drv.selectBy == "unique":
@@ -321,7 +321,7 @@ func (im *importer) loadTable(ps []*paramDef) {
 	case "eachoccurrence":
 		ds.Scope = "iteration"
 		modeStatus = model.Partial
-		modeNote = strings.TrimPrefix(modeNote+"; ", "; ") + "UpdateValueOn=Each occurrence: Phoenix advances rows once per iteration, not on every reference"
+		modeNote = strings.TrimPrefix(modeNote+"; ", "; ") + "UpdateValueOn=Each occurrence: Load Meter advances rows once per iteration, not on every reference"
 	default:
 		ds.Scope = "iteration"
 		modeStatus = model.Partial
@@ -342,7 +342,7 @@ func (im *importer) loadTable(ps []*paramDef) {
 		for _, d := range drivers[1:] {
 			if d.selectBy != drv.selectBy || d.updateOn != drv.updateOn {
 				modeStatus = model.Partial
-				modeNote = strings.TrimPrefix(modeNote+"; ", "; ") + fmt.Sprintf("%s and %s advance independently in LoadRunner; Phoenix reads one row for both", drv.name, d.name)
+				modeNote = strings.TrimPrefix(modeNote+"; ", "; ") + fmt.Sprintf("%s and %s advance independently in LoadRunner; Load Meter reads one row for both", drv.name, d.name)
 			}
 		}
 	}

@@ -45,7 +45,7 @@ Researcher: Formats agent (Haiku tier). The lead engineer condensed this file fr
 - Function arguments are documented for web_url, web_submit_data, web_custom_request, web_add_header, web_add_auto_header, web_reg_save_param_ex, web_reg_save_param_regexp (Group 0–10, default 1), web_reg_save_param_json (QueryString JSONPath, SelectAll), web_reg_find (Text, Search, Fail, SaveCount), lr_start_transaction, lr_save_string and lr_next_row (F019–F032).
 - Parameter types (F031): File, Table, Internal (Date/Time, Group Name, Iteration Number, LG Name, Random Number, Unique Number, Vuser ID), Custom, XML, User-defined function.
 - **U:** `.prm` key names (Type, Table, ColumnName, SelectNextRow, UpdateValueOn, OutOfRangePolicy), web_reg_save_param (plain), web_submit_form, lr_think_time, lr_end_transaction.
-- Licensing (F033): Controller runs need an OpenText licence. The Community licence allows 50 Vusers. Licences are per Vuser per protocol. Phoenix never needs or bundles the vendor runtime; it only reads script text statically.
+- Licensing (F033): Controller runs need an OpenText licence. The Community licence allows 50 Vusers. Licences are per Vuser per protocol. Load Meter never needs or bundles the vendor runtime; it only reads script text statically.
 
 ## C. AI providers
 | Provider | Endpoint | Auth | Notes |
@@ -59,7 +59,7 @@ Researcher: Formats agent (Haiku tier). The lead engineer condensed this file fr
 | GitHub Copilot | **No documented public API for third-party apps found** | – | not integrated |
 
 ## D. MCP
-- Latest spec **2026-07-28**: no `initialize` handshake, protocol version sent in `_meta`, servers MUST implement `server/discover`. The legacy flow (2025-11-25 and earlier) uses `initialize` and `notifications/initialized`. Phoenix supports both.
+- Latest spec **2026-07-28**: no `initialize` handshake, protocol version sent in `_meta`, servers MUST implement `server/discover`. The legacy flow (2025-11-25 and earlier) uses `initialize` and `notifications/initialized`. Load Meter supports both.
 - stdio transport: newline-delimited UTF-8 JSON-RPC. Nothing but MCP messages may go to stdout; logs go to stderr.
 - `tools/list` returns {tools, nextCursor}. `tools/call` takes {name, arguments} and returns {content[], isError, structuredContent?}.
 - Clients with MCP support: Claude Code / Desktop, ChatGPT (remote servers), Gemini CLI, Cursor, VS Code Copilot Chat (F053–F057).

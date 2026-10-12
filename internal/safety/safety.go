@@ -31,16 +31,16 @@ func DefaultPolicy() Policy {
 	return Policy{MaxVUs: 1000, MaxDuration: "4h", RequireConfirmAbove: 50}
 }
 
-// ConfigDir is ~/.phoenix (override with PHOENIX_HOME).
+// ConfigDir is ~/.loadmeter (override with LOADMETER_HOME).
 func ConfigDir() string {
-	if d := os.Getenv("PHOENIX_HOME"); d != "" {
+	if d := os.Getenv("LOADMETER_HOME"); d != "" {
 		return d
 	}
 	h, err := os.UserHomeDir()
 	if err != nil {
-		return ".phoenix"
+		return ".loadmeter"
 	}
-	return filepath.Join(h, ".phoenix")
+	return filepath.Join(h, ".loadmeter")
 }
 
 // LoadPolicy reads ConfigDir()/policy.json; a missing file yields the default policy.
@@ -173,7 +173,7 @@ func (l *Limiter) Wait(ctx context.Context) error {
 	for {
 		l.mu.Lock()
 		now := time.Now()
-		l.tokens = min(l.rate, l.tokens+now.Sub(l.last).Seconds()*l.rate)
+		l.tokens = min(max(l.rate, 1), l.tokens+now.Sub(l.last).Seconds()*l.rate) // burst ≥ 1 so rates < 1/s still progress
 		if l.tokens < 1 {
 			l.tokens = max(l.tokens, 0)
 		}

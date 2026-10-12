@@ -10,18 +10,17 @@ import (
 	"net"
 	"net/http"
 	"net/http/cookiejar"
-	"net/http/httptrace"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/extract"
-	"github.com/lelanga/phoenix/internal/metrics"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/safety"
-	"github.com/lelanga/phoenix/internal/vars"
+	"github.com/lelanga/loadmeter/internal/extract"
+	"github.com/lelanga/loadmeter/internal/metrics"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/safety"
+	"github.com/lelanga/loadmeter/internal/vars"
 )
 
 type ctxKey int
@@ -39,14 +38,22 @@ type vuState struct {
 	thinkAccum time.Duration
 	setupDone  bool
 	iterOK     bool
+	// HTTP layer (transport.go, auth.go, exchange.go).
+	ownTransport    *http.Transport // per-vu connection mode only
+	auth            authCache
+	curExplicitAuth bool     // the request in flight set Authorization itself (redirect hook)
+	cur             *timings // last request's timings (timing extractor/assertion); not the body
 }
 
 func (r *Run) newVU(id int) *vuState {
-	vu := &vuState{r: r, id: id, vc: vars.NewContext(id, r.opts.Seed), vuRows: map[string]bool{}}
+	vu := &vuState{r: r, id: id, vc: vars.NewContext(id, r.opts.Seed), vuRows: map[string]bool{}, auth: authCache{}}
+	vu.vc.Counter = &r.counter // ${__counter()} is per run, not per process
 	for k, v := range r.sc.Variables {
 		vu.vc.Vars[k] = v
 	}
-	c := &http.Client{Transport: r.transport}
+	rt, own := r.clientTransport()
+	vu.ownTransport = own
+	c := &http.Client{Transport: rt}
 	if !r.sc.Defaults.DisableCookies {
 		jar, _ := cookiejar.New(nil)
 		c.Jar = jar
@@ -58,6 +65,7 @@ func (r *Run) newVU(id int) *vuState {
 		if len(via) >= 10 {
 			return errors.New("stopped after 10 redirects")
 		}
+		vu.onRedirect(req)
 		return nil
 	}
 	vu.client = c
@@ -168,7 +176,11 @@ func (vu *vuState) execSteps(ctx context.Context, steps []model.Step) (bool, boo
 				}
 			}
 		case model.StepGroup:
-			sub, abort := vu.execSteps(ctx, st.Steps)
+			inner := st.Steps
+			if st.Select == model.SelectWeighted {
+				inner = vu.pickWeighted(st.Steps)
+			}
+			sub, abort := vu.execSteps(ctx, inner)
 			ok = ok && sub
 			if abort {
 				return false, true
@@ -183,6 +195,34 @@ func (vu *vuState) execSteps(ctx context.Context, steps []model.Step) (bool, boo
 	return ok, false
 }
 
+// pickWeighted returns a one-element slice holding the step chosen at random in
+// proportion to its weight (disabled and zero-weight steps are never chosen).
+func (vu *vuState) pickWeighted(steps []model.Step) []model.Step {
+	total := 0.0
+	for i := range steps {
+		if !steps[i].Disabled {
+			total += steps[i].StepWeight()
+		}
+	}
+	if total <= 0 {
+		return nil
+	}
+	x := vu.vc.Rand.Float64() * total
+	last := -1
+	for i := range steps {
+		w := steps[i].StepWeight()
+		if steps[i].Disabled || w <= 0 {
+			continue
+		}
+		last = i
+		if x < w {
+			return steps[i : i+1]
+		}
+		x -= w
+	}
+	return steps[last : last+1]
+}
+
 func (vu *vuState) think(ctx context.Context, t *model.Think) {
 	if t == nil {
 		return
@@ -191,10 +231,7 @@ func (vu *vuState) think(ctx context.Context, t *model.Think) {
 	if s := vu.r.sc.Workload.ThinkTimeScale; s != nil {
 		scale = *s
 	}
-	d := t.Min.D()
-	if t.Max > t.Min {
-		d += time.Duration(vu.vc.Rand.Int64N(int64(t.Max - t.Min)))
-	}
+	d := t.Sample(vu.vc.Rand)
 	d = time.Duration(float64(d) * scale)
 	if d <= 0 {
 		return
@@ -300,7 +337,7 @@ func (vu *vuState) buildRequest(ctx context.Context, rq *model.Request, used, un
 		req.Header.Set("Content-Type", contentType)
 	}
 	if req.Header.Get("User-Agent") == "" {
-		req.Header.Set("User-Agent", "Phoenix-Performance/0.1")
+		req.Header.Set("User-Agent", "Load Meter-Performance/0.1")
 	}
 	for k, v := range req.Header {
 		size += int64(len(k) + len(strings.Join(v, ",")) + 4)
@@ -375,33 +412,11 @@ func (vu *vuState) doRequest(ctx context.Context, st *model.Step) bool {
 	if err := vu.r.limiter.Wait(ctx); err != nil {
 		return false
 	}
-	var ttfb time.Time
-	trace := &httptrace.ClientTrace{GotFirstResponseByte: func() { ttfb = time.Now() }}
-	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
-	start := time.Now()
-	sample.Start = start
-	resp, err := vu.client.Do(req)
-	maxBody := vu.r.sc.Defaults.MaxBodyBytes
-	if maxBody <= 0 {
-		maxBody = defaultMaxBody
-	}
-	var body []byte
-	var bytesIn int64
-	if err == nil {
-		body, err = io.ReadAll(io.LimitReader(resp.Body, maxBody))
-		n, _ := io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
-		bytesIn = int64(len(body)) + n
-		for k, v := range resp.Header {
-			bytesIn += int64(len(k) + len(strings.Join(v, ",")) + 4)
-		}
-	}
-	lat := time.Since(start)
-	sample.Latency = lat
-	if !ttfb.IsZero() {
-		sample.TTFB = ttfb.Sub(start)
-	}
-	sample.BytesIn = bytesIn
+	// exchange.go: timings, split timeouts, auth, compression, wire bytes.
+	xr := vu.exchange(rctx, req, rq)
+	tm := xr.timing
+	vu.cur = &tm
+	resp, body, err, lat := xr.resp, xr.body, xr.err, xr.latency
 	ex.Method, ex.URL, ex.LatencyMs = req.Method, req.URL.String(), float64(lat.Microseconds())/1000
 	ex.ReqHeaders = flatten(req.Header)
 	if req.Host != "" {
@@ -409,11 +424,12 @@ func (vu *vuState) doRequest(ctx context.Context, st *model.Step) bool {
 	}
 	ex.ReqBody = truncate(reqBody, 64<<10)
 	ex.VarsUsed, ex.Unresolved = dedupe(used), dedupe(unres)
+	xr.fill(&sample, &ex)
 	if err != nil {
 		if ctx.Err() != nil && IsCancel(ctx.Err()) {
 			return false // run cancelled: not a target failure
 		}
-		sample.ErrKind, sample.ErrMsg = classify(err), err.Error()
+		sample.ErrKind, sample.ErrMsg = xr.errKind, err.Error()
 		vu.r.Col.Add(sample)
 		ex.Error = err.Error()
 		vu.inspect(ex)
@@ -552,6 +568,10 @@ func (vu *vuState) extractOne(e model.Extractor, resp *http.Response, body []byt
 		}
 	case model.ExStatus:
 		matches = []string{strconv.Itoa(resp.StatusCode)}
+	case model.ExTiming:
+		if vu.cur != nil {
+			matches = []string{fmtMs(vu.cur.get(expr))}
+		}
 	}
 	v, ok := extract.Pick(matches, e.Match, vu.vc.Rand.IntN)
 	return v, ok, nil
@@ -612,9 +632,13 @@ func (vu *vuState) assert(a model.Assertion, resp *http.Response, body []byte, l
 			res.Message = "invalid max_latency value " + val
 			break
 		}
+		what := "latency"
+		if expr != "" && expr != "total" && vu.cur != nil {
+			lat, what = vu.cur.get(expr), expr+" time"
+		}
 		res.Passed = lat <= d
 		if !res.Passed {
-			res.Message = fmt.Sprintf("latency %s exceeds %s", lat.Round(time.Millisecond), d)
+			res.Message = fmt.Sprintf("%s %s exceeds %s", what, lat.Round(time.Millisecond), d)
 		}
 	case model.AsHeader:
 		h := resp.Header.Get(expr)

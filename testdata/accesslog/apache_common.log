@@ -1,0 +1,7 @@
+127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326
+127.0.0.1 - frank [10/Oct/2000:13:55:37 -0700] "GET /index.html HTTP/1.0" 200 1043
+192.0.2.10 - - [10/Oct/2000:13:56:01 -0700] "GET /catalog/items/25 HTTP/1.1" 200 512
+192.0.2.10 - - [10/Oct/2000:13:56:09 -0700] "GET /catalog/items/26 HTTP/1.1" 200 530
+192.0.2.10 - - [10/Oct/2000:13:56:20 -0700] "HEAD /index.html HTTP/1.1" 200 -
+garbage "unterminated quote
+192.0.2.10 - - [10/Oct/2000:13:56:30 -0700] "-" 408 -

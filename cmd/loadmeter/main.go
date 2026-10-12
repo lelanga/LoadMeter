@@ -1,4 +1,4 @@
-// Command phoenix is the Phoenix Performance CLI: run tests, import/convert
+// Command loadmeter is the Load Meter CLI: run tests, import/convert
 // artifacts, serve the web UI and expose an MCP server for AI assistants.
 package main
 
@@ -21,13 +21,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lelanga/phoenix/examples"
-	"github.com/lelanga/phoenix/internal/app"
-	"github.com/lelanga/phoenix/internal/mockserver"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/report"
-	"github.com/lelanga/phoenix/internal/results"
-	"github.com/lelanga/phoenix/internal/safety"
+	"github.com/lelanga/loadmeter/examples"
+	"github.com/lelanga/loadmeter/internal/app"
+	"github.com/lelanga/loadmeter/internal/mockserver"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/report"
+	"github.com/lelanga/loadmeter/internal/results"
+	"github.com/lelanga/loadmeter/internal/safety"
 )
 
 type command struct {
@@ -43,22 +43,22 @@ func register(name, summary string, fn func([]string) error) {
 
 func init() {
 	register("version", "Print version information", func([]string) error {
-		fmt.Printf("phoenix %s (%s %s/%s)\n", results.Version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+		fmt.Printf("loadmeter %s (%s %s/%s)\n", results.Version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 		return nil
 	})
-	register("run", "Run a scenario: phoenix run scenario.json [--vus N --duration 1m --rate R --allow-host H]", cmdRun)
+	register("run", "Run a scenario: loadmeter run scenario.json [--vus N --duration 1m --rate R --allow-host H]", cmdRun)
 	register("validate", "Validate a scenario file without running it", cmdValidate)
 	register("demo", "Start the bundled mock server and run the sample scenario (one-click sample)", cmdDemo)
-	register("mock", "Run the deterministic mock target server: phoenix mock [--addr 127.0.0.1:8099]", cmdMock)
-	register("report", "Re-render the HTML report for a run: phoenix report <run-id> [--baseline <run-id>]", cmdReport)
-	register("compare", "Compare two runs: phoenix compare <baseline-run-id> <run-id>", cmdCompare)
+	register("mock", "Run the deterministic mock target server: loadmeter mock [--addr 127.0.0.1:8099]", cmdMock)
+	register("report", "Re-render the HTML report for a run: loadmeter report <run-id> [--baseline <run-id>]", cmdReport)
+	register("compare", "Compare two runs: loadmeter compare <baseline-run-id> <run-id>", cmdCompare)
 	register("runs", "List runs in the workspace", cmdRuns)
 	register("doctor", "Check the installation and environment", cmdDoctor)
 	register("init", "Create a workspace with the sample scenario", cmdInit)
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "Phoenix Performance %s — lightweight load testing with optional AI assistance\n\nUsage: phoenix <command> [flags]\n\nCommands:\n", results.Version)
+	fmt.Fprintf(os.Stderr, "Load Meter %s — lightweight load testing with optional AI assistance\n\nUsage: loadmeter <command> [flags]\n\nCommands:\n", results.Version)
 	names := make([]string, 0, len(commands))
 	for n := range commands {
 		names = append(names, n)
@@ -67,10 +67,25 @@ func usage() {
 	for _, n := range names {
 		fmt.Fprintf(os.Stderr, "  %-14s %s\n", n, commands[n].summary)
 	}
-	fmt.Fprintf(os.Stderr, "\nGlobal: --workspace DIR (default ./phoenix-workspace or $PHOENIX_WORKSPACE)\nRun 'phoenix <command> -h' for command flags.\n")
+	fmt.Fprintf(os.Stderr, "\nGlobal: --workspace DIR (default ./loadmeter-workspace or $LOADMETER_WORKSPACE)\nRun 'loadmeter <command> -h' for command flags.\n")
 }
 
+// guiMode is set to "1" at link time for the windowless Windows build
+// (-ldflags "-H=windowsgui -X main.guiMode=1"): no console, errors in a message box.
+var guiMode string
+
 func main() {
+	// Double-clicked on Windows (no arguments): open the app window and keep the
+	// console open on errors, instead of printing usage and closing at once.
+	doubleClicked := runtime.GOOS == "windows" && len(os.Args) < 2
+	if doubleClicked {
+		if os.Getenv("LOADMETER_WORKSPACE") == "" {
+			if home, err := os.UserHomeDir(); err == nil {
+				_ = os.Setenv("LOADMETER_WORKSPACE", filepath.Join(home, "LoadMeter-Workspace"))
+			}
+		}
+		os.Args = append(os.Args, "serve", "--app")
+	}
 	if len(os.Args) < 2 || os.Args[1] == "-h" || os.Args[1] == "--help" || os.Args[1] == "help" {
 		usage()
 		if len(os.Args) < 2 {
@@ -88,10 +103,18 @@ func main() {
 		if errors.Is(err, flag.ErrHelp) {
 			return
 		}
-		fmt.Fprintln(os.Stderr, "error:", err)
 		var ec exitCode
 		if errors.As(err, &ec) {
-			os.Exit(int(ec))
+			os.Exit(int(ec)) // outcome codes (SLA failed, regression) were already reported
+		}
+		if guiMode == "1" {
+			showError("Load Meter", err.Error())
+			os.Exit(1)
+		}
+		fmt.Fprintln(os.Stderr, "error:", err)
+		if doubleClicked {
+			fmt.Fprintln(os.Stderr, "\nPress Enter to close this window.")
+			_, _ = fmt.Scanln()
 		}
 		os.Exit(1)
 	}
@@ -102,10 +125,10 @@ type exitCode int
 func (e exitCode) Error() string { return fmt.Sprintf("exit code %d", int(e)) }
 
 func defaultWorkspace() string {
-	if d := os.Getenv("PHOENIX_WORKSPACE"); d != "" {
+	if d := os.Getenv("LOADMETER_WORKSPACE"); d != "" {
 		return d
 	}
-	return "phoenix-workspace"
+	return "loadmeter-workspace"
 }
 
 type stringList []string
@@ -122,6 +145,8 @@ type runFlags struct {
 	allow                                 stringList
 	jsonOut, quiet, yes                   bool
 	set                                   stringList
+	dist                                  distFlags // distributed.go
+	stat                                  statFlags // gates.go
 }
 
 func addRunFlags(fs *flag.FlagSet, f *runFlags) {
@@ -137,9 +162,11 @@ func addRunFlags(fs *flag.FlagSet, f *runFlags) {
 	fs.BoolVar(&f.quiet, "quiet", false, "no live progress output")
 	fs.BoolVar(&f.yes, "yes", false, "confirm high-impact tests against non-loopback hosts")
 	fs.Var(&f.set, "set", "set a scenario variable, e.g. --set baseUrl=http://127.0.0.1:8080 (repeatable)")
+	addDistFlags(fs, &f.dist)
+	addStatFlags(fs, &f.stat)
 }
 
-// applyOverrides edits the workload from flags; returns a description.
+// applyOverrides applies --set variables and workload flags.
 func applyOverrides(sc *model.Scenario, f *runFlags) error {
 	for _, kv := range f.set {
 		k, v, ok := strings.Cut(kv, "=")
@@ -151,104 +178,21 @@ func applyOverrides(sc *model.Scenario, f *runFlags) error {
 		}
 		sc.Variables[k] = v
 	}
-	var dur time.Duration
-	if f.duration != "" {
-		d, err := time.ParseDuration(f.duration)
-		if err != nil {
-			return fmt.Errorf("--duration: %w", err)
-		}
-		dur = d
-	}
-	w := &sc.Workload
-	switch {
-	case f.rate > 0:
-		if dur == 0 {
-			dur = w.PlannedDuration()
-		}
-		*w = model.Workload{Executor: model.ExecArrivalRate, Rate: f.rate, Duration: model.Duration(dur), VUs: max(f.vus, 1),
-			MaxVUs: max(f.maxVUs, f.vus, int(f.rate*2), 10), Pacing: w.Pacing, GracefulStop: w.GracefulStop, ThinkTimeScale: w.ThinkTimeScale, OnError: w.OnError}
-	case f.vus > 0:
-		if dur == 0 {
-			dur = w.PlannedDuration()
-		}
-		if dur == 0 {
-			dur = 30 * time.Second
-		}
-		if f.rampUp != "" {
-			ru, err := time.ParseDuration(f.rampUp)
-			if err != nil {
-				return fmt.Errorf("--ramp-up: %w", err)
-			}
-			if ru >= dur {
-				return fmt.Errorf("--ramp-up must be shorter than --duration")
-			}
-			*w = model.Workload{Executor: model.ExecRampingVUs, Stages: []model.Stage{{Duration: model.Duration(ru), Target: float64(f.vus)},
-				{Duration: model.Duration(dur - ru), Target: float64(f.vus)}}, Pacing: w.Pacing, GracefulStop: w.GracefulStop, ThinkTimeScale: w.ThinkTimeScale, OnError: w.OnError}
-		} else {
-			*w = model.Workload{Executor: model.ExecConstantVUs, VUs: f.vus, Duration: model.Duration(dur), Pacing: w.Pacing, GracefulStop: w.GracefulStop, ThinkTimeScale: w.ThinkTimeScale, OnError: w.OnError}
-		}
-	case dur > 0:
-		if w.Executor == model.ExecConstantVUs || w.Executor == model.ExecArrivalRate {
-			w.Duration = model.Duration(dur)
-		} else {
-			return fmt.Errorf("--duration alone only applies to constant-vus or constant-arrival-rate; also pass --vus or --rate")
-		}
-	}
-	return nil
+	return app.ApplyOverrides(sc, app.Overrides{VUs: f.vus, Duration: f.duration, RampUp: f.rampUp, Rate: f.rate, MaxVUs: f.maxVUs})
 }
 
-// targetHosts lists hosts referenced by request URLs after variable expansion.
-func targetHosts(sc *model.Scenario) []string {
-	seen := map[string]bool{}
-	expand := func(s string) string {
-		for k, v := range sc.Variables {
-			s = strings.ReplaceAll(s, "${"+k+"}", v)
-		}
-		return s
-	}
-	base := expand(sc.Defaults.BaseURL)
-	for _, st := range sc.AllRequests() {
-		u := expand(st.Request.URL)
-		if !strings.Contains(u, "://") {
-			u = base
-		}
-		if i := strings.Index(u, "://"); i >= 0 {
-			h := u[i+3:]
-			if j := strings.IndexAny(h, "/?#"); j >= 0 {
-				h = h[:j]
-			}
-			if hh, _, err := net.SplitHostPort(h); err == nil {
-				h = hh
-			}
-			if h != "" && !strings.Contains(h, "${") {
-				seen[strings.Trim(h, "[]")] = true
-			}
-		}
-	}
-	out := make([]string, 0, len(seen))
-	for h := range seen {
-		out = append(out, h)
-	}
-	sort.Strings(out)
-	return out
-}
+func targetHosts(sc *model.Scenario) []string { return app.TargetHosts(sc) }
 
-// checkTargets enforces the allowlist up front (the dialer enforces it again per connection).
 func checkTargets(sc *model.Scenario, pol safety.Policy, yes bool) error {
-	remote := false
-	for _, h := range targetHosts(sc) {
-		if !pol.HostAllowed(h) {
-			return &safety.ErrHostNotAllowed{Host: h}
+	remote, err := app.CheckTargets(sc, pol, yes)
+	if err != nil {
+		if _, ok := err.(*app.ErrNeedsConfirmation); ok {
+			return fmt.Errorf("%v (pass --yes)", err)
 		}
-		if !safety.IsLoopback(h) {
-			remote = true
-		}
+		return err
 	}
 	if remote {
 		fmt.Fprintln(os.Stderr, "WARNING: this test targets a non-local system. Only load test systems you own or are authorized to test, and avoid production unless explicitly approved.")
-		if v := sc.Workload.MaxPlannedVUs(); v > pol.RequireConfirmAbove && !yes {
-			return fmt.Errorf("high-impact test (%d VUs) against a non-loopback host requires --yes", v)
-		}
 	}
 	return nil
 }
@@ -257,11 +201,11 @@ func cmdRun(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	var f runFlags
 	addRunFlags(fs, &f)
-	if err := fs.Parse(reorder(args)); err != nil {
+	if err := fs.Parse(reorder(fs, args)); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: phoenix run scenario.json [flags]")
+		return fmt.Errorf("usage: loadmeter run scenario.json [flags]")
 	}
 	path := fs.Arg(0)
 	sc, err := app.LoadScenario(path)
@@ -286,14 +230,20 @@ func runScenario(sc *model.Scenario, baseDir string, f *runFlags) error {
 	if err := checkTargets(sc, pol, f.yes); err != nil {
 		return err
 	}
+	if f.dist.enabled() {
+		return runDistributed(sc, baseDir, f, pol)
+	}
 	ws := app.Workspace{Dir: f.workspace}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	a, err := ws.StartRun(ctx, sc, app.RunOptions{BaseDir: baseDir, Policy: pol, Baseline: f.baseline, Logger: logger})
+	bw := newBreachWatch(sc, f.stat)
+	a, err := ws.StartRun(ctx, sc, app.RunOptions{BaseDir: baseDir, Policy: pol, Baseline: f.baseline, Logger: logger,
+		Compare: f.stat.cmp.options("", ""), Finalize: bw.finalizer()})
 	if err != nil {
 		return err
 	}
+	bw.start(a, f.quiet || f.jsonOut)
 	sig := make(chan os.Signal, 2)
 	signal.Notify(sig, os.Interrupt)
 	defer signal.Stop(sig)
@@ -329,7 +279,7 @@ func runScenario(sc *model.Scenario, baseDir string, f *runFlags) error {
 		return enc.Encode(sum)
 	}
 	printSummary(sum, a.Dir)
-	if len(sum.SLAs) > 0 && !sum.SLAPassed {
+	if len(sum.SLAs) > 0 && !sum.SLAPassed || bw.Reason() != "" {
 		return exitCode(3)
 	}
 	return nil
@@ -361,7 +311,7 @@ func printSummary(s *results.Summary, dir string) {
 		fmt.Printf("[%s/%s] %s — %s\n", fi.Kind, fi.Severity, fi.Title, fi.Evidence)
 	}
 	if s.Baseline != nil {
-		fmt.Printf("baseline %s: %d regression(s)\n", s.Baseline.BaselineRun, s.Baseline.Regressions)
+		fmt.Printf("baseline %s: %s, %d regression(s) (details: loadmeter compare %s %s)\n", s.Baseline.BaselineRun, s.Baseline.Verdict, s.Baseline.Regressions, s.Baseline.BaselineRun, s.RunID)
 	}
 	fmt.Printf("\nreport: %s\n", filepath.Join(dir, "report.html"))
 }
@@ -374,13 +324,19 @@ func trunc(s string, n int) string {
 }
 
 // reorder moves flags before positional args so "run file.json --vus 5" works.
-func reorder(args []string) []string {
+// reorder moves flags before positional arguments so "cmd file --flag v" works.
+// Whether a flag takes a value is read from the flag set itself.
+func reorder(fs *flag.FlagSet, args []string) []string {
 	var flags, pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if a == "--" {
+			pos = append(pos, args[i+1:]...)
+			break
+		}
 		if strings.HasPrefix(a, "-") && a != "-" {
 			flags = append(flags, a)
-			if !strings.Contains(a, "=") && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") && !isBoolFlag(a) {
+			if !strings.Contains(a, "=") && i+1 < len(args) && !isBoolFlag(fs, a) {
 				flags = append(flags, args[i+1])
 				i++
 			}
@@ -391,16 +347,24 @@ func reorder(args []string) []string {
 	return append(flags, pos...)
 }
 
-var boolFlags = map[string]bool{"json": true, "quiet": true, "yes": true, "apply": true, "validate": true, "keep-credentials": true,
-	"include-static": true, "dry-run": true, "open": true, "no-ai": true, "confirm": true, "help": true, "h": true}
-
-func isBoolFlag(a string) bool { return boolFlags[strings.TrimLeft(a, "-")] }
+func isBoolFlag(fs *flag.FlagSet, a string) bool {
+	f := fs.Lookup(strings.TrimLeft(a, "-"))
+	if f == nil {
+		return true // unknown: let flag.Parse report it
+	}
+	b, ok := f.Value.(interface{ IsBoolFlag() bool })
+	return ok && b.IsBoolFlag()
+}
 
 // ---------- other commands ----------
 
 func cmdValidate(args []string) error {
+	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
+		fmt.Fprintln(os.Stderr, "usage: loadmeter validate scenario.json")
+		return nil
+	}
 	if len(args) != 1 {
-		return fmt.Errorf("usage: phoenix validate scenario.json")
+		return fmt.Errorf("usage: loadmeter validate scenario.json")
 	}
 	sc, err := app.LoadScenario(args[0])
 	if err != nil {
@@ -430,7 +394,7 @@ func startMock(addr string) (string, func(), error) {
 	if err != nil {
 		return "", nil, err
 	}
-	srv := &http.Server{Handler: mockserver.New("phoenix-demo").Handler(), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: mockserver.New("loadmeter-demo").Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go srv.Serve(ln)
 	return "http://" + ln.Addr().String(), func() { srv.Close() }, nil
 }
@@ -487,7 +451,7 @@ func cmdInit(args []string) error {
 	if err := writeExamples(w.ScenariosDir()); err != nil {
 		return err
 	}
-	fmt.Printf("workspace ready: %s\nsample scenario: %s\nnext: phoenix mock   (in another terminal), then: phoenix run %s\n", *ws,
+	fmt.Printf("workspace ready: %s\nsample scenario: %s\nnext: loadmeter mock   (in another terminal), then: loadmeter run %s\n", *ws,
 		filepath.Join(w.ScenariosDir(), "shop-login.json"), filepath.Join(w.ScenariosDir(), "shop-login.json"))
 	return nil
 }
@@ -496,7 +460,7 @@ func cmdDemo(args []string) error {
 	fs := flag.NewFlagSet("demo", flag.ContinueOnError)
 	var f runFlags
 	addRunFlags(fs, &f)
-	if err := fs.Parse(reorder(args)); err != nil {
+	if err := fs.Parse(reorder(fs, args)); err != nil {
 		return err
 	}
 	w := app.Workspace{Dir: f.workspace}
@@ -541,7 +505,7 @@ func cmdRuns(args []string) error {
 		if len(s.SLAs) > 0 {
 			sla = map[bool]string{true: "pass", false: "FAIL"}[s.SLAPassed]
 		}
-		fmt.Printf("%-48s %-30s reqs=%-8d p95=%-8.1f err=%-6.2f%% sla=%s\n", id, trunc(s.Scenario, 30), s.Snapshot.Requests.Count, s.Snapshot.Requests.P95Ms, s.Snapshot.Requests.ErrorRate, sla)
+		fmt.Printf("%-48s %-30s reqs=%-8d p95=%-8.1f err=%.2f%% sla=%s\n", id, trunc(s.Scenario, 30), s.Snapshot.Requests.Count, s.Snapshot.Requests.P95Ms, s.Snapshot.Requests.ErrorRate, sla)
 	}
 	return nil
 }
@@ -559,22 +523,22 @@ func cmdReport(args []string) error {
 	fs := flag.NewFlagSet("report", flag.ContinueOnError)
 	ws := fs.String("workspace", defaultWorkspace(), "workspace directory")
 	base := fs.String("baseline", "", "baseline run ID to include")
-	if err := fs.Parse(reorder(args)); err != nil {
+	if err := fs.Parse(reorder(fs, args)); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: phoenix report <run-id>")
+		return fmt.Errorf("usage: loadmeter report <run-id>")
 	}
 	s, dir, err := loadRun(*ws, fs.Arg(0))
 	if err != nil {
 		return err
 	}
 	if *base != "" {
-		b, _, err := loadRun(*ws, *base)
+		b, bdir, err := loadRun(*ws, *base)
 		if err != nil {
 			return err
 		}
-		s.Baseline = results.Compare(b, s)
+		s.Baseline = results.CompareWith(b, s, results.CompareOptions{BaseDir: bdir, CurDir: dir})
 	}
 	desc := ""
 	if sc, err := app.LoadScenario(filepath.Join(dir, "scenario.json")); err == nil {
@@ -596,30 +560,33 @@ func cmdReport(args []string) error {
 func cmdCompare(args []string) error {
 	fs := flag.NewFlagSet("compare", flag.ContinueOnError)
 	ws := fs.String("workspace", defaultWorkspace(), "workspace directory")
-	if err := fs.Parse(reorder(args)); err != nil {
+	jsonOut := fs.Bool("json", false, "print the comparison as JSON")
+	var cf compareFlags
+	addCompareFlags(fs, &cf) // gates.go
+	if err := fs.Parse(reorder(fs, args)); err != nil {
 		return err
 	}
 	if fs.NArg() != 2 {
-		return fmt.Errorf("usage: phoenix compare <baseline-run-id> <run-id>")
+		return fmt.Errorf("usage: loadmeter compare <baseline-run-id> <run-id> [--alpha 0.05 --min-effect-pct 5 --json]")
 	}
-	b, _, err := loadRun(*ws, fs.Arg(0))
+	b, bdir, err := loadRun(*ws, fs.Arg(0))
 	if err != nil {
 		return err
 	}
-	c, _, err := loadRun(*ws, fs.Arg(1))
+	c, cdir, err := loadRun(*ws, fs.Arg(1))
 	if err != nil {
 		return err
 	}
-	cmp := results.Compare(b, c)
-	fmt.Printf("%-30s %-10s %12s %12s %9s\n", "scope", "metric", "baseline", "current", "change")
-	for _, d := range cmp.Deltas {
-		flag := ""
-		if d.Worse {
-			flag = "  REGRESSION"
+	cmp := results.CompareWith(b, c, cf.options(bdir, cdir))
+	if *jsonOut {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(cmp); err != nil {
+			return err
 		}
-		fmt.Printf("%-30s %-10s %12.2f %12.2f %8.1f%%%s\n", trunc(d.Name, 30), d.Metric, d.Baseline, d.Current, d.Change, flag)
+	} else {
+		printComparison(cmp)
 	}
-	fmt.Println(cmp.Note)
 	if cmp.Regressions > 0 {
 		return exitCode(3)
 	}
@@ -643,7 +610,7 @@ func cmdDoctor(args []string) error {
 	}
 	pol, err := safety.LoadPolicy()
 	check("safety policy", err, fmt.Sprintf("%s/policy.json — maxVUs %d, allowlisted hosts %d (loopback always allowed)", safety.ConfigDir(), pol.MaxVUs, len(pol.AllowedHosts)))
-	tmp, err := os.MkdirTemp("", "phoenix-doctor")
+	tmp, err := os.MkdirTemp("", "loadmeter-doctor")
 	if err == nil {
 		os.RemoveAll(tmp)
 	}

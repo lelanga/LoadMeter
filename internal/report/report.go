@@ -7,9 +7,12 @@ import (
 	"html/template"
 	"io"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 
-	"github.com/lelanga/phoenix/internal/results"
+	"github.com/lelanga/loadmeter/internal/results"
+	"github.com/lelanga/loadmeter/internal/triage"
 )
 
 type series struct {
@@ -86,6 +89,7 @@ func short(v float64) string {
 type view struct {
 	*results.Summary
 	Charts          []template.HTML
+	Triage          template.HTML
 	Observations    []results.Finding
 	Hypotheses      []results.Finding
 	Recommendations []string
@@ -99,7 +103,7 @@ func recommendations(s *results.Summary) []string {
 	for _, f := range s.Findings {
 		switch {
 		case strings.HasPrefix(f.Title, "Possible authentication"):
-			r = append(r, "Validate correlation rules with `phoenix correlate --validate` and confirm test credentials before re-running.")
+			r = append(r, "Validate correlation rules with `loadmeter correlate --validate` and confirm test credentials before re-running.")
 		case strings.HasPrefix(f.Title, "Load generator"):
 			r = append(r, "Re-run with fewer VUs per generator or on a larger machine to separate client-side from server-side latency.")
 		case strings.HasPrefix(f.Title, "Iterations dropped"):
@@ -133,6 +137,12 @@ func dedupe(a []string) []string {
 // Render writes the HTML report.
 func Render(w io.Writer, s *results.Summary, description string) error {
 	v := view{Summary: s, Objective: description}
+	// Failure triage: the report file sits next to raw.csv in the run folder.
+	if f, ok := w.(*os.File); ok && s.Snapshot.Requests.Errors > 0 {
+		if res, err := triage.AnalyzeRun(filepath.Dir(f.Name()), s); err == nil {
+			v.Triage = res.HTMLSection(10)
+		}
+	}
 	tl := s.Snapshot.Timeline
 	col := func(f func(i int) float64) []float64 {
 		out := make([]float64, len(tl))
@@ -184,7 +194,7 @@ var tpl = template.Must(template.New("r").Funcs(template.FuncMap{
 }).Parse(htmlTpl))
 
 const htmlTpl = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Phoenix report: {{.Scenario}}</title>
+<title>Load Meter report: {{.Scenario}}</title>
 <style>
 :root{--bg:#fff;--fg:#1d2330;--muted:#667085;--line:#e4e7ec;--card:#f7f8fa;--good:#1a7f37;--bad:#c23b3b;--accent:#2f6fdf}
 @media (prefers-color-scheme:dark){:root{--bg:#12151c;--fg:#e6e8ee;--muted:#98a2b3;--line:#2a303c;--card:#1a1f29}}
@@ -217,7 +227,7 @@ code{background:var(--card);padding:1px 4px;border-radius:4px}
 
 <h2>Environment and configuration</h2>
 <table><tr><th>Item</th><th>Value</th></tr>
-<tr><td>Phoenix version</td><td>{{.Env.Phoenix}} ({{.Env.GoVersion}})</td></tr>
+<tr><td>Load Meter version</td><td>{{.Env.LoadMeter}} ({{.Env.GoVersion}})</td></tr>
 <tr><td>Load generator</td><td>{{.Env.Hostname}} · {{.Env.OS}}/{{.Env.Arch}} · {{.Env.CPUs}} CPUs</td></tr></table>
 
 <h2>Workload profile</h2>
@@ -250,9 +260,16 @@ code{background:var(--card);padding:1px 4px;border-radius:4px}
 
 {{if .Baseline}}<h2>Comparison with baseline {{.Baseline.BaselineRun}}</h2>
 <p class="muted">{{.Baseline.Note}}</p>
-<table><tr><th>Scope</th><th>Metric</th><th>Baseline</th><th>Current</th><th>Change</th><th></th></tr>
-{{range .Baseline.Deltas}}<tr><td>{{.Name}}</td><td>{{.Metric}}</td><td>{{.Baseline}}</td><td>{{.Current}}</td><td>{{.Change}}%</td><td>{{if .Worse}}<span class="badge bad">regression</span>{{end}}</td></tr>{{end}}</table>{{end}}
+{{if .Baseline.Verdict}}<h3>Statistical comparison: {{.Baseline.Verdict}}</h3><p class="muted">{{.Baseline.Method}}.{{range .Baseline.Warnings}} Warning: {{.}}{{end}}</p>{{end}}
+<table><tr><th>Scope</th><th>Metric</th><th>Baseline</th><th>Current</th><th>Change</th><th>Verdict</th><th>Reason</th></tr>
+{{range .Baseline.Deltas}}<tr><td>{{.Name}}</td><td>{{.Metric}}</td><td>{{.Baseline}}</td><td>{{.Current}}</td><td>{{.Change}}%</td><td>{{if .Worse}}<span class="badge bad">regression</span>{{else}}{{.Verdict}}{{end}}</td><td class="muted">{{.Reason}}</td></tr>{{end}}</table>{{end}}
 
+{{if .Agents}}<h2>Load agents</h2>
+<p class="muted">Distributed run: overall metrics above are merged from every node's full histograms.</p>
+<table><tr><th>Node</th><th>Address</th><th>Status</th><th>VUs</th><th>Requests</th><th>Errors</th><th>p95 ms</th><th>Clock skew ms</th></tr>
+{{range .Agents}}<tr><td>{{.ID}}</td><td>{{if .Address}}{{.Address}}{{else}}local{{end}}</td><td>{{.Status}}{{if .Error}} — {{.Error}}{{end}}</td><td>{{.VUs}}</td><td>{{.Requests}}</td><td>{{.Errors}}</td><td>{{f1 .P95Ms}}</td><td>{{f1 .ClockSkewMs}}</td></tr>{{end}}</table>{{end}}
+
+{{.Triage}}
 <h2>Findings</h2>
 <h3>Observed facts</h3>{{range .Observations}}<div class="finding {{.Severity}}"><b>{{.Title}}</b><br>{{.Evidence}}</div>{{else}}<p class="muted">None.</p>{{end}}
 <h3>Hypotheses (need confirmation)</h3>{{range .Hypotheses}}<div class="finding {{.Severity}}"><b>{{.Title}}</b><br>{{.Evidence}}</div>{{else}}<p class="muted">None.</p>{{end}}
@@ -269,5 +286,5 @@ code{background:var(--card);padding:1px 4px;border-radius:4px}
 <h2>Technical appendix: requests</h2>
 <table><tr><th>Request</th><th>Count</th><th>Err</th><th>RPS</th><th>Min</th><th>Avg</th><th>p50</th><th>p90</th><th>p95</th><th>p99</th><th>Max</th><th>KB in</th></tr>
 {{range .Snapshot.ByRequest}}<tr><td>{{.Name}}</td><td>{{.Count}}</td><td>{{.Errors}}</td><td>{{f1 .RPS}}</td><td>{{f1 .MinMs}}</td><td>{{f1 .AvgMs}}</td><td>{{f1 .P50Ms}}</td><td>{{f1 .P90Ms}}</td><td>{{f1 .P95Ms}}</td><td>{{f1 .P99Ms}}</td><td>{{f1 .MaxMs}}</td><td>{{kb .BytesIn}}</td></tr>{{end}}</table>
-<p class="muted">Generated by Phoenix Performance {{.Env.Phoenix}}. Raw per-sample data: <code>raw.csv</code> (JTL-compatible columns) in the run folder.</p>
+<p class="muted">Generated by Load Meter {{.Env.LoadMeter}}. Raw per-sample data: <code>raw.csv</code> (JTL-compatible columns) in the run folder.</p>
 </body></html>`

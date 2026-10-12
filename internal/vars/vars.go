@@ -17,17 +17,20 @@ import (
 	"time"
 )
 
-var globalCounter atomic.Int64
-
 // EnvPrefix restricts ${__env(NAME)} to variables starting with this prefix so an
 // imported (untrusted) script cannot read arbitrary secrets from the environment.
-const EnvPrefix = "PHOENIX_"
+const EnvPrefix = "LOADMETER_"
 
 type Context struct {
 	Vars map[string]string
 	VU   int
 	Iter int
 	Rand *mrand.Rand
+	// Counter backs ${__counter()}. The engine points every VU of a run at
+	// the run's counter, so the sequence restarts at 1 for each run (it used
+	// to be a process-wide global that kept counting across runs in `serve`).
+	// When nil, the context lazily uses its own counter.
+	Counter *atomic.Int64
 }
 
 func NewContext(vu int, seed uint64) *Context {
@@ -61,7 +64,9 @@ func (c *Context) Expand(s string) (string, Result) {
 		}
 		expr := s[i+2 : end]
 		if strings.HasPrefix(expr, "__") {
-			v, err := c.call(expr)
+			v, nested, err := c.call(expr)
+			res.Used = append(res.Used, nested.Used...)
+			res.Unresolved = append(res.Unresolved, nested.Unresolved...)
 			if err != nil {
 				b.WriteString(s[i : end+1])
 				res.Unresolved = append(res.Unresolved, expr)
@@ -98,7 +103,13 @@ func matchBrace(s string, i int) int {
 	return -1
 }
 
-func (c *Context) call(expr string) (string, error) {
+func (c *Context) call(expr string) (string, Result, error) {
+	var nested Result
+	v, err := c.callInto(expr, &nested)
+	return v, nested, err
+}
+
+func (c *Context) callInto(expr string, nested *Result) (string, error) {
 	name, argStr := expr, ""
 	if p := strings.IndexByte(expr, '('); p >= 0 {
 		if !strings.HasSuffix(expr, ")") {
@@ -109,7 +120,9 @@ func (c *Context) call(expr string) (string, error) {
 	var args []string
 	if argStr != "" {
 		for _, a := range strings.Split(argStr, ",") {
-			v, _ := c.Expand(strings.TrimSpace(a))
+			v, r := c.Expand(strings.TrimSpace(a))
+			nested.Used = append(nested.Used, r.Used...)
+			nested.Unresolved = append(nested.Unresolved, r.Unresolved...)
 			args = append(args, v)
 		}
 	}
@@ -150,7 +163,10 @@ func (c *Context) call(expr string) (string, error) {
 		}
 		return strconv.FormatInt(time.Now().UnixMilli(), 10), nil
 	case "__counter":
-		return strconv.FormatInt(globalCounter.Add(1), 10), nil
+		if c.Counter == nil {
+			c.Counter = new(atomic.Int64)
+		}
+		return strconv.FormatInt(c.Counter.Add(1), 10), nil
 	case "__vu":
 		return strconv.Itoa(c.VU), nil
 	case "__iteration":
@@ -197,7 +213,7 @@ func urlEncode(s string) string {
 
 // Functions lists built-ins for docs/UI.
 var Functions = []string{"__uuid()", "__randomInt(min,max)", "__randomString(n)", "__timestamp([format])",
-	"__counter()", "__vu()", "__iteration()", "__env(PHOENIX_NAME[,default])", "__urlencode(value)"}
+	"__counter()", "__vu()", "__iteration()", "__env(LOADMETER_NAME[,default])", "__urlencode(value)"}
 
 // EvalCondition evaluates `a == b`, `a != b`, or a single operand (true when
 // non-empty and not "false"/"0") after expansion.

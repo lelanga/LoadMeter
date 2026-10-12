@@ -62,7 +62,7 @@ Frustrations
 ## Part B. OUR TECHNICAL ANALYSIS (inference, not user quotes)
 
 ### B1. What experienced LoadRunner users value (synthesis from A1)
-Record/replay with auto-correlation suggestions and a replay-compare loop [S030, S042, S043]; scenario/goal modelling, central controller and geographic load generators [S042]; integrated analysis [S005]; protocol breadth [S005]. Phoenix implication: replicate the *workflow* (record, scan, suggest, replay-validate, repeat), not the protocol catalogue.
+Record/replay with auto-correlation suggestions and a replay-compare loop [S030, S042, S043]; scenario/goal modelling, central controller and geographic load generators [S042]; integrated analysis [S005]; protocol breadth [S005]. Load Meter implication: replicate the *workflow* (record, scan, suggest, replay-validate, repeat), not the protocol catalogue.
 
 ### B2. What makes JMeter accessible and extensible
 GUI test-plan tree, built-in HTTP(S) recorder with templates [S019]; CSV Data Set and extractors as first-class elements [S018]; JSR223/Groovy extensibility [S018]; HTML dashboard from CSV (`-g`/`-e -o`) [S035]; plugin ecosystem and plugin manager [S029, S044]; free [S015, S017]; broad built-in protocols (JDBC, JMS, LDAP, FTP, TCP) [S044]. JMX is a de-facto interchange format (Taurus converts JMX/Swagger to YAML [S028]).

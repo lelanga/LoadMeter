@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/lelanga/phoenix/internal/model"
+	"github.com/lelanga/loadmeter/internal/model"
 )
 
 var errDataExhausted = errors.New("data source exhausted")
@@ -121,4 +121,15 @@ func (f *feed) assign(vars map[string]string, row []string) {
 		vars[c] = v
 		vars[f.ds.Name+"."+c] = v
 	}
+}
+
+// LoadRows reads a data source (file and/or inline rows) with the same rules
+// the engine uses, returning its columns and rows. Distributed runs use it to
+// ship CSV contents to agents as inline rows.
+func LoadRows(ds model.DataSource, baseDir string) ([]string, [][]string, error) {
+	f, err := loadFeed(ds, baseDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	return f.cols, f.rows, nil
 }

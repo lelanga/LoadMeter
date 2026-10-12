@@ -4,22 +4,20 @@ package engine
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"math"
-	"net"
 	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/lelanga/phoenix/internal/metrics"
-	"github.com/lelanga/phoenix/internal/model"
-	"github.com/lelanga/phoenix/internal/safety"
-	"github.com/lelanga/phoenix/internal/sysres"
+	"github.com/lelanga/loadmeter/internal/metrics"
+	"github.com/lelanga/loadmeter/internal/model"
+	"github.com/lelanga/loadmeter/internal/safety"
+	"github.com/lelanga/loadmeter/internal/sysres"
 )
 
 type Options struct {
@@ -31,6 +29,9 @@ type Options struct {
 	Inspect   func(Exchange) // optional per-request detail (debug/validation runs)
 	MaxIters  int            // optional hard cap on total iterations (validation runs)
 	Overrides *model.Workload
+	// OnCollector, when set, is called with the run's collector before any
+	// sample is recorded (distributed agents use it to enable delta tracking).
+	OnCollector func(*metrics.Collector)
 }
 
 // Exchange is the full detail of one request, for the inspector and correlation validation.
@@ -53,6 +54,13 @@ type Exchange struct {
 	Unresolved  []string          `json:"unresolved,omitempty"`
 	OK          bool              `json:"ok"`
 	Error       string            `json:"error,omitempty"`
+	// HTTP-layer detail (exchange.go): timing breakdown, wire vs decoded
+	// response bytes, decoded Content-Encoding and compatibility notes.
+	Timing          *TimingDetail `json:"timing,omitempty"`
+	WireBytes       int64         `json:"wireBytes,omitempty"` // response body bytes on the wire
+	BodyBytes       int64         `json:"bodyBytes,omitempty"` // decoded response body bytes
+	ContentEncoding string        `json:"contentEncoding,omitempty"`
+	Notes           []string      `json:"notes,omitempty"`
 }
 
 type AssertResult struct {
@@ -80,7 +88,9 @@ type Run struct {
 	StartedAt time.Time
 	EndedAt   time.Time
 	feeds     map[string]*feed
-	transport *http.Transport
+	transport *http.Transport // shared mode only (see transport.go)
+	http      *httpRuntime
+	counter   atomic.Int64 // ${__counter()} for this run
 	limiter   *safety.Limiter
 	active    atomic.Int64
 	vuSeq     atomic.Int64
@@ -122,17 +132,8 @@ func Prepare(sc *model.Scenario, opts Options) (*Run, error) {
 		}
 		r.feeds[ds.Name] = f
 	}
-	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
-	maxConns := max(w.MaxPlannedVUs(), 16)
-	r.transport = &http.Transport{
-		Proxy:               nil, // never route load through a system proxy implicitly
-		DialContext:         opts.Policy.GuardDialer(dialer),
-		MaxIdleConns:        maxConns * 2,
-		MaxIdleConnsPerHost: maxConns,
-		IdleConnTimeout:     90 * time.Second,
-		TLSHandshakeTimeout: 10 * time.Second,
-		ForceAttemptHTTP2:   true,
-		TLSClientConfig:     &tls.Config{InsecureSkipVerify: sc.Defaults.InsecureSkipVerify, MinVersion: tls.VersionTLS12},
+	if err := r.setupHTTP(); err != nil {
+		return nil, err
 	}
 	r.limiter = safety.NewLimiter(opts.Policy.MaxRPS)
 	r.state.Store(StateRunning)
@@ -188,6 +189,9 @@ func (r *Run) Start(ctx context.Context) {
 	r.StartedAt = time.Now()
 	r.hardCtx, r.hardStop = context.WithCancel(ctx)
 	r.Col = metrics.NewCollector(r.StartedAt, r.opts.Raw)
+	if r.opts.OnCollector != nil {
+		r.opts.OnCollector(r.Col)
+	}
 	safety.Audit("run.start", map[string]any{"scenario": r.sc.Name, "executor": r.sc.Workload.Executor,
 		"maxVUs": r.sc.Workload.MaxPlannedVUs(), "duration": r.sc.Workload.PlannedDuration().String()})
 	go r.sampleResources()
@@ -202,6 +206,9 @@ func (r *Run) Start(ctx context.Context) {
 		r.execute()
 		r.EndedAt = time.Now()
 		r.Col.Flush()
+		if r.transport != nil {
+			r.transport.CloseIdleConnections()
+		}
 		r.hardStop()
 		if r.State() != StateFailed {
 			r.state.Store(StateDone)
@@ -249,7 +256,7 @@ func (r *Run) execute() {
 	case model.ExecRampingVUs:
 		total := w.PlannedDuration()
 		r.durationTimer(total)
-		r.runVUs(w.MaxPlannedVUs(), func(el time.Duration) int { return int(math.Round(stageTarget(w.VUs, w.Stages, el))) }, 0)
+		r.runVUs(w.MaxPlannedVUs(), func(el time.Duration) int { return int(math.Round(stageTarget(float64(w.VUs), w.Stages, el))) }, 0)
 	case model.ExecPerVUIterations:
 		r.durationTimer(w.Duration.D()) // optional max duration
 		r.runVUs(w.VUs, func(time.Duration) int { return w.VUs }, w.Iterations)
@@ -259,7 +266,7 @@ func (r *Run) execute() {
 		if w.Executor == model.ExecArrivalRate {
 			rate, total = func(time.Duration) float64 { return w.Rate }, w.Duration.D()
 		} else {
-			rate, total = func(el time.Duration) float64 { return stageTarget(int(w.Rate), w.Stages, el) }, w.PlannedDuration()
+			rate, total = func(el time.Duration) float64 { return stageTarget(w.Rate, w.Stages, el) }, w.PlannedDuration()
 		}
 		r.durationTimer(total)
 		r.runArrival(rate)
@@ -267,8 +274,8 @@ func (r *Run) execute() {
 }
 
 // stageTarget linearly interpolates the target at elapsed time from a start value.
-func stageTarget(start int, stages []model.Stage, el time.Duration) float64 {
-	from := float64(start)
+func stageTarget(start float64, stages []model.Stage, el time.Duration) float64 {
+	from := start
 	var t time.Duration
 	for _, s := range stages {
 		d := s.Duration.D()
@@ -290,6 +297,7 @@ func (r *Run) runVUs(pool int, target func(time.Duration) int, itersPerVU int) {
 		go func(idx int) {
 			defer wg.Done()
 			vu := r.newVU(idx)
+			defer vu.closeIdle()
 			setupDone := false
 			iters := 0
 			for {
@@ -360,10 +368,17 @@ func (r *Run) runArrival(rate func(time.Duration) float64) {
 	}
 	pre := max(min(w.VUs, maxVUs), 1)
 	idle := make(chan *vuState, maxVUs)
-	allocated := 0
-	for i := 0; i < pre; i++ {
+	// A VU whose setup fails is retired (its slot freed for a fresh VU with
+	// a new id) instead of being lost from the pool for the rest of the run.
+	retired := make(chan struct{}, maxVUs)
+	allocated, nextID := 0, 0
+	newVU := func() *vuState {
 		allocated++
-		idle <- r.newVU(allocated)
+		nextID++
+		return r.newVU(nextID)
+	}
+	for i := 0; i < pre; i++ {
+		idle <- newVU()
 	}
 	var wg sync.WaitGroup
 	next := time.Now()
@@ -391,13 +406,20 @@ func (r *Run) runArrival(rate func(time.Duration) float64) {
 		if rt <= 0 {
 			continue
 		}
+		for drained := false; !drained; {
+			select {
+			case <-retired:
+				allocated--
+			default:
+				drained = true
+			}
+		}
 		var vu *vuState
 		select {
 		case vu = <-idle:
 		default:
 			if allocated < maxVUs {
-				allocated++
-				vu = r.newVU(allocated)
+				vu = newVU()
 			}
 		}
 		if vu == nil {
@@ -414,6 +436,8 @@ func (r *Run) runArrival(rate func(time.Duration) float64) {
 			if !vu.setupDone {
 				vu.setupDone = true
 				if !vu.runPhase(r.hardCtx, r.sc.Setup, "setup") {
+					vu.closeIdle()
+					retired <- struct{}{}
 					return
 				}
 			}
@@ -424,6 +448,14 @@ func (r *Run) runArrival(rate func(time.Duration) float64) {
 		}(vu)
 	}
 	wg.Wait()
+	for {
+		select {
+		case vu := <-idle:
+			vu.closeIdle()
+		default:
+			return
+		}
+	}
 }
 
 // IsCancel reports errors caused by run cancellation (not counted as failures).
