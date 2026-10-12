@@ -3,7 +3,9 @@
 package results
 
 import (
+	"crypto/rand"
 	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -58,6 +60,24 @@ type Summary struct {
 	DataConfig []string         `json:"dataConfig,omitempty"`
 	Baseline   *Comparison      `json:"baseline,omitempty"`
 	Notes      []string         `json:"notes,omitempty"`
+	// Agents is the per-node breakdown of a distributed run (absent for single-node runs).
+	Agents []AgentStat `json:"agents,omitempty"`
+}
+
+// AgentStat is one node's share of a distributed run. The run-level metrics
+// in Snapshot are merged from every node's histograms, not averaged.
+type AgentStat struct {
+	ID          string  `json:"id"`
+	Address     string  `json:"address,omitempty"` // empty for the local (controller) node
+	Status      string  `json:"status"`            // finished | failed | disconnected | stopped
+	Error       string  `json:"error,omitempty"`
+	VUs         int     `json:"vus"`
+	Rate        float64 `json:"rate,omitempty"`
+	Requests    uint64  `json:"requests"`
+	Errors      uint64  `json:"errors"`
+	ErrorRate   float64 `json:"errorRate"`
+	P95Ms       float64 `json:"p95Ms"`
+	ClockSkewMs float64 `json:"clockSkewMs"`
 }
 
 var Version = "0.1.0-dev"
@@ -77,7 +97,10 @@ func NewRunID(name string) string {
 	if len(safe) > 40 {
 		safe = safe[:40]
 	}
-	return time.Now().UTC().Format("20060102-150405") + "-" + strings.Trim(safe, "-")
+	var rb [2]byte
+	_, _ = rand.Read(rb[:])
+	// the random part keeps IDs unique for runs started within the same second
+	return time.Now().UTC().Format("20060102-150405") + "-" + hex.EncodeToString(rb[:]) + "-" + strings.Trim(safe, "-")
 }
 
 // Build creates the summary from a finished collector.

@@ -216,7 +216,7 @@ func Import(r io.Reader, source string, o Options) (*model.Scenario, *model.Comp
 		if !lastEnd.IsZero() && !k.start.IsZero() {
 			gap = k.start.Sub(lastEnd)
 		}
-		newGroup := cur == nil || (groupKey != "" && groupKey != cur.Comment) || (groupKey == "" && gap > o.ThinkThreshold*2)
+		newGroup := cur == nil || (groupKey != "" && groupKey != cur.Comment) || (groupKey == "" && (cur.Comment != "" || gap > o.ThinkThreshold*2))
 		if newGroup {
 			if cur != nil && gap > o.ThinkThreshold {
 				g := min(gap, 30*time.Second).Round(100 * time.Millisecond)

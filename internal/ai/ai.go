@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -206,7 +207,10 @@ func (c *Client) Complete(ctx context.Context, req Request) (*Response, error) {
 		ids[0], ids[1] = ids[1], ids[0]
 	}
 	if req.MaxTokens <= 0 || (c.Cfg.Limits.MaxTokensPerCall > 0 && req.MaxTokens > c.Cfg.Limits.MaxTokensPerCall) {
-		req.MaxTokens = max(c.Cfg.Limits.MaxTokensPerCall, 512)
+		req.MaxTokens = c.Cfg.Limits.MaxTokensPerCall
+		if req.MaxTokens <= 0 {
+			req.MaxTokens = 512
+		}
 	}
 	if err := c.checkBudget(); err != nil {
 		return nil, err
@@ -288,6 +292,9 @@ func (c *Client) callWithRetry(ctx context.Context, p ProviderConfig, req Reques
 		var he *httpError
 		if !errors.As(err, &he) || !(he.status == 429 || he.status >= 500) {
 			return nil, err
+		}
+		if attempt == 2 {
+			break // no sleep after the final attempt
 		}
 		select {
 		case <-time.After(time.Duration(1<<attempt) * time.Second):
@@ -562,10 +569,13 @@ func (c *Client) checkBudget() error {
 	return nil
 }
 
+// untrustedClose matches any spelling of the closing tag (case, whitespace).
+var untrustedClose = regexp.MustCompile(`(?i)<\s*/\s*untrusted_data\s*>`)
+
 // Untrusted wraps external content (scripts, responses, logs) so models treat
 // it as data. Instructions inside it must be ignored (prompt-injection guard).
 func Untrusted(label, content string) string {
-	content = strings.ReplaceAll(content, "</untrusted_data>", "</untrusted-data>")
+	content = untrustedClose.ReplaceAllString(content, "</untrusted-data>")
 	return fmt.Sprintf("<untrusted_data source=%q>\n%s\n</untrusted_data>", label, content)
 }
 

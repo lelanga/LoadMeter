@@ -1,0 +1,105 @@
+{
+  "openapi": "3.0.3",
+  "info": {"title": "Petstore-like API", "version": "1.2.0", "description": "Fixture for the Phoenix OpenAPI importer."},
+  "servers": [{"url": "http://127.0.0.1:{port}/v1", "variables": {"port": {"default": "8099"}}}],
+  "tags": [{"name": "pets"}, {"name": "store"}],
+  "security": [{"bearerAuth": []}],
+  "paths": {
+    "/pets": {
+      "get": {
+        "tags": ["pets"], "operationId": "listPets", "summary": "List pets",
+        "parameters": [
+          {"name": "limit", "in": "query", "required": true, "schema": {"type": "integer", "minimum": 5, "maximum": 100}},
+          {"name": "status", "in": "query", "schema": {"type": "string", "enum": ["available", "sold"], "default": "available"}},
+          {"name": "debug", "in": "query", "schema": {"type": "boolean"}}
+        ],
+        "responses": {"200": {"description": "ok"}, "default": {"description": "err"}}
+      },
+      "post": {
+        "tags": ["pets"], "operationId": "createPet",
+        "requestBody": {"$ref": "#/components/requestBodies/PetBody"},
+        "responses": {"400": {"description": "bad"}, "201": {"description": "created"}}
+      }
+    },
+    "/pets/{petId}": {
+      "parameters": [{"name": "petId", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}],
+      "get": {
+        "tags": ["pets"], "operationId": "getPet",
+        "responses": {"200": {"description": "ok"}}
+      },
+      "put": {
+        "tags": ["pets"], "operationId": "updatePet",
+        "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Pet"}}}},
+        "responses": {"204": {"description": "updated"}}
+      },
+      "delete": {
+        "tags": ["pets"], "operationId": "deletePet",
+        "responses": {"204": {"description": "deleted"}}
+      }
+    },
+    "/pets/legacy/{petId}": {
+      "get": {
+        "tags": ["pets"], "operationId": "legacyGetPet", "deprecated": true,
+        "parameters": [{"name": "petId", "in": "path", "required": true, "schema": {"type": "integer"}, "example": 42}],
+        "responses": {"200": {"description": "ok"}}
+      }
+    },
+    "/store/orders": {
+      "post": {
+        "tags": ["store"], "operationId": "placeOrder",
+        "security": [{"apiKeyAuth": []}],
+        "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Order"}}}},
+        "responses": {"200": {"description": "ok"}}
+      }
+    },
+    "/store/health": {
+      "get": {"tags": ["store"], "operationId": "health", "security": [], "responses": {"2XX": {"description": "ok"}}}
+    },
+    "/external": {
+      "post": {
+        "operationId": "externalBody",
+        "requestBody": {"content": {"application/json": {"schema": {"$ref": "other.json#/components/schemas/Thing"}}}},
+        "responses": {"200": {"description": "ok"}}
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {"type": "http", "scheme": "bearer"},
+      "apiKeyAuth": {"type": "apiKey", "in": "header", "name": "X-API-Key"}
+    },
+    "requestBodies": {
+      "PetBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Pet"}}}}
+    },
+    "schemas": {
+      "Pet": {
+        "type": "object", "required": ["id", "name", "category", "email", "born"],
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "name": {"type": "string", "minLength": 3},
+          "email": {"type": "string", "format": "email"},
+          "born": {"type": "string", "format": "date-time"},
+          "age": {"type": "integer"},
+          "status": {"type": "string", "enum": ["available", "sold"]},
+          "tags": {"type": "array", "items": {"type": "string"}},
+          "category": {"$ref": "#/components/schemas/Category"}
+        }
+      },
+      "Category": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string", "example": "dogs"},
+          "parent": {"$ref": "#/components/schemas/Category"}
+        }
+      },
+      "Order": {
+        "type": "object", "required": ["petId", "quantity"],
+        "properties": {
+          "petId": {"type": "string", "format": "uuid"},
+          "quantity": {"type": "integer", "minimum": 1},
+          "shipDate": {"type": "string", "format": "date"}
+        }
+      }
+    }
+  }
+}

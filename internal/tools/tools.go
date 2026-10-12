@@ -98,12 +98,18 @@ func importPath(s *service.Service, p string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if real, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = real // judge the real target, not a symlink inside an allowed folder
+	}
 	roots := []string{filepath.Join(s.WS.Dir, "imports")}
 	if wd, err := os.Getwd(); err == nil {
 		roots = append(roots, wd)
 	}
 	for _, r := range roots {
 		ra, _ := filepath.Abs(r)
+		if real, err := filepath.EvalSymlinks(ra); err == nil {
+			ra = real
+		}
 		if rel, err := filepath.Rel(ra, abs); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return abs, nil
 		}

@@ -109,7 +109,7 @@ The proxy only accepts a loopback listen address.
 
 ## 5. Review correlations
 
-Open the scenario's correlation page from the Import result (or from the scenarios list). Phoenix looks for values that appear in a response and are later sent back in a request, such as session IDs, CSRF tokens, auth tokens and IDs.
+After a HAR import, the Import page shows the correlation candidates. The UI also has a correlation page for each scenario. Phoenix looks for values that appear in a response and are later sent back in a request, such as session IDs, CSRF tokens, auth tokens and IDs.
 
 For each candidate you see:
 
@@ -326,3 +326,66 @@ Stop the mock server afterwards (`kill %1`).
 | UI says 403 / token error | Open the full URL printed by `phoenix serve`, including `?token=`. |
 | `cannot listen on 127.0.0.1:7878` | Another Phoenix is running. Use `--addr 127.0.0.1:0` to pick a free port. |
 | Low open-file limit warning in `doctor` | Run `ulimit -n 65535` before large tests. |
+
+## Converting between formats
+
+### Import an OpenAPI spec
+
+```
+phoenix import-openapi spec.json [--name N] [--tags a,b] [--exclude-tags x]
+    [--operations opId1,opId2] [--group-by tag|path]
+    [--include-deprecated] [--include-destructive] [--json]
+```
+
+Reads an OpenAPI 3.0/3.1 **JSON** document (max 20 MB; convert YAML first, for example with `yq -o=json`).
+
+- One transaction per tag (or per path), one request per operation.
+- Path parameters become `${param}` variables seeded from examples.
+- JSON bodies are built from examples or schemas (uuid, date-time and email formats become dynamic functions).
+- The status assertion comes from the first 2xx response; `servers[0].url` becomes the `baseUrl` variable.
+- Security schemes become headers with `${secret_*}` placeholders. Set them before running, for example with `${__env(PHOENIX_TOKEN)}`.
+- Deprecated and DELETE operations are skipped unless you include them.
+- Only local `#/` references are resolved; cyclic references are truncated and reported.
+
+MCP tool: `import_openapi`.
+
+### Export to k6
+
+```
+phoenix export-k6 scenario.json [-o out.js]
+```
+
+Writes a self-contained k6 script (no remote imports) with executors, thresholds from SLAs, extractors, checks and CSV data. The compatibility report lists anything k6 cannot express. Run it with `k6 run out.js`, keeping CSV files at the path the script opens. k6 does not apply this tool's host allowlist, so only test systems you are authorized to test. MCP tool: `export_k6`.
+
+## Distributed testing
+
+One machine is not always enough. Phoenix can split a test across several load agents running the same binary: no RMI, no extra ports, no Java.
+
+**1. Start an agent on each load machine**
+
+    phoenix agent --token-file ~/.phoenix/agent.token [--listen 0.0.0.0:7979] [--allow-host api.test.example]
+
+- The first start creates a random token file (0600) and a self-signed TLS certificate in `~/.phoenix/agent/`, and prints the certificate's SHA-256 fingerprint plus a ready-to-copy controller command. `phoenix agent --fingerprint` prints it again.
+- The agent refuses to start without a token. Agents are the only component meant to listen on non-loopback addresses; all traffic is HTTPS with the token.
+- Each agent enforces its **own** safety policy (its `policy.json` and `--allow-host`). The controller cannot widen it.
+
+**2. Copy the token file to the controller**, then run:
+
+    phoenix run scenario.json --vus 300 --duration 10m \
+      --agents 10.0.0.11:7979#<fingerprint>,10.0.0.12:7979#<fingerprint> \
+      --agent-token-file ./agent.token [--local-share 0.2]
+
+or list agents in a file and use `--agents-file agents.json`:
+
+    {"tokenFile": "agent.token",
+     "agents": [{"id": "lg-1", "addr": "10.0.0.11:7979", "fingerprint": "<sha256>"},
+                {"id": "lg-2", "addr": "10.0.0.12:7979", "fingerprint": "<sha256>"}]}
+
+What happens:
+
+- Certificate fingerprints are checked; a mismatch stops the run before any load.
+- VUs, arrival rate and maxVUs are split across agents; `--local-share` runs a fraction on the controller.
+- CSV data travels with the scenario; `mode: "unique"` gives each node its own slice.
+- All nodes start together, corrected for measured clock offset (warning above 250 ms; keep NTP on).
+- Per-second histograms are merged, so percentiles are exact across agents, not averages of averages. The summary and report include a per-node table.
+- Ctrl+C stops every node (twice aborts in-flight requests). A lost agent is recorded as a finding and the run continues on the others; an agent that loses its controller stops immediately.

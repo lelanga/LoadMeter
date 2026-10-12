@@ -253,6 +253,11 @@ code{background:var(--card);padding:1px 4px;border-radius:4px}
 <table><tr><th>Scope</th><th>Metric</th><th>Baseline</th><th>Current</th><th>Change</th><th></th></tr>
 {{range .Baseline.Deltas}}<tr><td>{{.Name}}</td><td>{{.Metric}}</td><td>{{.Baseline}}</td><td>{{.Current}}</td><td>{{.Change}}%</td><td>{{if .Worse}}<span class="badge bad">regression</span>{{end}}</td></tr>{{end}}</table>{{end}}
 
+{{if .Agents}}<h2>Load agents</h2>
+<p class="muted">Distributed run: overall metrics above are merged from every node's full histograms.</p>
+<table><tr><th>Node</th><th>Address</th><th>Status</th><th>VUs</th><th>Requests</th><th>Errors</th><th>p95 ms</th><th>Clock skew ms</th></tr>
+{{range .Agents}}<tr><td>{{.ID}}</td><td>{{if .Address}}{{.Address}}{{else}}local{{end}}</td><td>{{.Status}}{{if .Error}} — {{.Error}}{{end}}</td><td>{{.VUs}}</td><td>{{.Requests}}</td><td>{{.Errors}}</td><td>{{f1 .P95Ms}}</td><td>{{f1 .ClockSkewMs}}</td></tr>{{end}}</table>{{end}}
+
 <h2>Findings</h2>
 <h3>Observed facts</h3>{{range .Observations}}<div class="finding {{.Severity}}"><b>{{.Title}}</b><br>{{.Evidence}}</div>{{else}}<p class="muted">None.</p>{{end}}
 <h3>Hypotheses (need confirmation)</h3>{{range .Hypotheses}}<div class="finding {{.Severity}}"><b>{{.Title}}</b><br>{{.Evidence}}</div>{{else}}<p class="muted">None.</p>{{end}}

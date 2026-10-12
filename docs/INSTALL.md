@@ -42,20 +42,34 @@ On macOS, the system may block a binary you downloaded. If so, allow it in Syste
 
 ## install.sh
 
-`install.sh` at the repo root installs the right binary for your system into `~/.local/bin`. It downloads or copies the matching `phoenix-<os>-<arch>` file and names it `phoenix`.
+`install.sh` at the repo root installs Phoenix into `~/.local/bin` (or `$PREFIX/bin` if you set `PREFIX`).
 
 ```bash
 sh install.sh
 ```
 
-Make sure `~/.local/bin` is on your `PATH`:
+What it does:
+
+1. Detects your OS (Linux or macOS) and CPU (amd64 or arm64).
+2. If `dist/phoenix-<os>-<arch>` exists, it checks the file against `dist/SHA256SUMS` (when `sha256sum` is available) and copies it to `<bin>/phoenix`.
+3. If there is no prebuilt file but Go is installed, it builds from source.
+4. Otherwise it stops with an error.
+5. It prints `phoenix version` and tells you how to add the folder to your `PATH`.
+
+On Windows, use `dist/phoenix-windows-<arch>.exe` directly.
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 phoenix version
 ```
 
-Read the script before you run it. It is a normal shell script.
+Read the script before you run it. It is a short shell script.
+
+You can check the downloads yourself from the `dist/` folder:
+
+```bash
+cd dist && sha256sum -c SHA256SUMS
+```
 
 ## Docker
 
@@ -63,23 +77,24 @@ Read the script before you run it. It is a normal shell script.
 docker build -t phoenix .
 ```
 
-The image runs `phoenix serve`. The web UI binds **loopback only** (`127.0.0.1`) and refuses other addresses. Inside a container, a published port (`-p 7878:7878`) cannot reach a loopback-only listener. Use one of these options instead:
+The image is built from a Go 1.24 Alpine stage and runs on a minimal distroless image as a non-root user. The entry point is `phoenix`. The default command is `serve --addr 127.0.0.1:7878 --workspace /data/phoenix-workspace`, with `PHOENIX_HOME=/data/.phoenix`. Keep your data in a volume mounted at `/data`.
 
-1. Host networking (Linux):
+The web UI binds **loopback only** (`127.0.0.1`) and refuses other addresses. Inside a container, a published port (`-p 7878:7878`) cannot reach a loopback-only listener. Use one of these:
 
-   ```bash
-   docker run --rm --network host phoenix
-   ```
-
-   Data written inside the container is lost when it stops. Mount a volume for the workspace if you want to keep runs. Check the Dockerfile for the workspace path it uses.
-
-2. Use the CLI commands instead of the UI. Override the command:
+1. Host networking (Linux). The UI is then reachable at the printed URL on your host:
 
    ```bash
-   docker run --rm phoenix demo --duration 10s
+   docker run --rm --network host -v phoenix-data:/data phoenix
    ```
 
-Targets on `127.0.0.1` inside the container are the container itself. To test a real system from Docker you must allow its host (see [SECURITY.md](SECURITY.md)).
+2. Use the CLI commands instead of the UI. Anything after the image name replaces the default command:
+
+   ```bash
+   docker run --rm --network host -v "$PWD:/data" phoenix run scenarios/x.json
+   docker run --rm -v phoenix-data:/data phoenix demo --duration 10s
+   ```
+
+`127.0.0.1` inside a container (without host networking) is the container itself. To test a real system from Docker you must allow its host (see [SECURITY.md](SECURITY.md)).
 
 ## Where Phoenix keeps files
 

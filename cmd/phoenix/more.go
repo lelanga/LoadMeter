@@ -36,7 +36,7 @@ func init() {
 	register("export-jmx", "Export a workspace scenario to JMeter .jmx: phoenix export-jmx scenario.json [-o out.jmx]", cmdExportJMX)
 	register("correlate", "Suggest/apply correlation rules for an imported scenario: phoenix correlate scenario.json [--apply ids|all --policy validated]", cmdCorrelate)
 	register("parameterize", "Suggest/apply test-data parameters: phoenix parameterize scenario.json [--apply ids|all --rows 100]", cmdParameterize)
-	register("record", "Record plain-HTTP traffic through a local proxy into a HAR: phoenix record --out rec.har", cmdRecord)
+	register("record", "Record a script (HTTP/HTTPS) via a local proxy: phoenix record [--browser --url URL] [--to-scenario NAME] | record ca [--export F|--delete]", cmdRecord)
 	register("ask", "Natural-language control: phoenix ask \"create a 100-user 10-minute test with ramp-up\" [--file f.json --confirm]", cmdAsk)
 	register("ai", "AI provider settings: phoenix ai status | enable <light-id> <strong-id> [--cloud-consent] | disable | set-key <id> | test <id>", cmdAI)
 	register("explain", "Ask the configured AI to explain a run: phoenix explain <run-id>", cmdExplain)
@@ -121,8 +121,12 @@ func cmdServe(args []string) error {
 }
 
 func cmdMCP(args []string) error {
+	if len(args) > 0 && (args[0] == "install" || args[0] == "uninstall") {
+		return cmdMCPInstall(args)
+	}
 	fs := flag.NewFlagSet("mcp", flag.ContinueOnError)
 	ws := fs.String("workspace", defaultWorkspace(), "workspace directory")
+	httpAddr := fs.String("http", "", "serve Streamable HTTP on this loopback address (e.g. 127.0.0.1:7880) instead of stdio")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -132,6 +136,9 @@ func cmdMCP(args []string) error {
 		return err
 	}
 	defer svc.Close()
+	if *httpAddr != "" {
+		return runMCPHTTP(svc, *httpAddr)
+	}
 	fmt.Fprintf(os.Stderr, "phoenix MCP server on stdio (workspace %s)\n", abs)
 	return (&mcp.Server{Svc: svc}).Serve(context.Background(), os.Stdin, os.Stdout, os.Stderr)
 }
@@ -477,35 +484,7 @@ func cmdParameterize(args []string) error {
 	return nil
 }
 
-func cmdRecord(args []string) error {
-	fs := flag.NewFlagSet("record", flag.ContinueOnError)
-	addr := fs.String("listen", "127.0.0.1:8888", "proxy listen address")
-	out := fs.String("out", "recording.har", "HAR output file")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	host, _, err := net.SplitHostPort(*addr)
-	if err != nil || !safety.IsLoopback(host) {
-		return fmt.Errorf("the recording proxy only listens on loopback")
-	}
-	rec := har.NewRecorder(&http.Transport{Proxy: nil})
-	ln, err := net.Listen("tcp", *addr)
-	if err != nil {
-		return err
-	}
-	srv := &http.Server{Handler: rec.Proxy(), ReadHeaderTimeout: 10 * time.Second}
-	go srv.Serve(ln)
-	fmt.Printf("recording proxy on http://%s — set it as the HTTP proxy for plain-HTTP targets, then press Ctrl+C to save %s\n(HTTPS: export a HAR from browser DevTools instead)\n", ln.Addr(), *out)
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt)
-	<-sig
-	srv.Close()
-	if err := rec.Save(*out); err != nil {
-		return err
-	}
-	fmt.Println("saved", *out, "— next: phoenix import-har", *out)
-	return nil
-}
+func cmdRecord(args []string) error { return runRecord(args) } // see record.go
 
 func cmdAsk(args []string) error {
 	fs := flag.NewFlagSet("ask", flag.ContinueOnError)
@@ -558,6 +537,10 @@ func cmdAsk(args []string) error {
 func cmdAI(args []string) error {
 	if len(args) == 0 {
 		args = []string{"status"}
+	}
+	if args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
+		fmt.Fprintln(os.Stderr, "usage: phoenix ai status | enable [--cloud-consent] <light> <strong> | disable | set-key <provider> | test <provider>")
+		return nil
 	}
 	cfg, err := ai.LoadConfig()
 	if err != nil {

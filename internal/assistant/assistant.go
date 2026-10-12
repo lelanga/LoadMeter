@@ -105,7 +105,7 @@ func Plan(ctx context.Context, svc *service.Service, client *ai.Client, prompt, 
 var (
 	reUsers = regexp.MustCompile(`(?i)(\d+)\s*-?\s*(?:virtual\s+)?(?:users?|vus?)\b`)
 	reDur   = regexp.MustCompile(`(?i)(\d+)\s*-?\s*(seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h)\b`)
-	reRate  = regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)\s*(?:requests?|iterations?|rps|tps)\s*(?:/|per)\s*(?:s|sec|second)`)
+	reRate  = regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)\s*(?:(?:requests?|iterations?)\s*(?:/|per)\s*(?:s|sec|second)|rps\b|tps\b)`)
 	rePath  = regexp.MustCompile(`([^\s"']+\.(?:har|jmx))`)
 )
 

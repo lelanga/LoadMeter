@@ -31,6 +31,9 @@ type Options struct {
 	Inspect   func(Exchange) // optional per-request detail (debug/validation runs)
 	MaxIters  int            // optional hard cap on total iterations (validation runs)
 	Overrides *model.Workload
+	// OnCollector, when set, is called with the run's collector before any
+	// sample is recorded (distributed agents use it to enable delta tracking).
+	OnCollector func(*metrics.Collector)
 }
 
 // Exchange is the full detail of one request, for the inspector and correlation validation.
@@ -188,6 +191,9 @@ func (r *Run) Start(ctx context.Context) {
 	r.StartedAt = time.Now()
 	r.hardCtx, r.hardStop = context.WithCancel(ctx)
 	r.Col = metrics.NewCollector(r.StartedAt, r.opts.Raw)
+	if r.opts.OnCollector != nil {
+		r.opts.OnCollector(r.Col)
+	}
 	safety.Audit("run.start", map[string]any{"scenario": r.sc.Name, "executor": r.sc.Workload.Executor,
 		"maxVUs": r.sc.Workload.MaxPlannedVUs(), "duration": r.sc.Workload.PlannedDuration().String()})
 	go r.sampleResources()

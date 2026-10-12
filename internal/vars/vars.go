@@ -61,7 +61,9 @@ func (c *Context) Expand(s string) (string, Result) {
 		}
 		expr := s[i+2 : end]
 		if strings.HasPrefix(expr, "__") {
-			v, err := c.call(expr)
+			v, nested, err := c.call(expr)
+			res.Used = append(res.Used, nested.Used...)
+			res.Unresolved = append(res.Unresolved, nested.Unresolved...)
 			if err != nil {
 				b.WriteString(s[i : end+1])
 				res.Unresolved = append(res.Unresolved, expr)
@@ -98,7 +100,13 @@ func matchBrace(s string, i int) int {
 	return -1
 }
 
-func (c *Context) call(expr string) (string, error) {
+func (c *Context) call(expr string) (string, Result, error) {
+	var nested Result
+	v, err := c.callInto(expr, &nested)
+	return v, nested, err
+}
+
+func (c *Context) callInto(expr string, nested *Result) (string, error) {
 	name, argStr := expr, ""
 	if p := strings.IndexByte(expr, '('); p >= 0 {
 		if !strings.HasSuffix(expr, ")") {
@@ -109,7 +117,9 @@ func (c *Context) call(expr string) (string, error) {
 	var args []string
 	if argStr != "" {
 		for _, a := range strings.Split(argStr, ",") {
-			v, _ := c.Expand(strings.TrimSpace(a))
+			v, r := c.Expand(strings.TrimSpace(a))
+			nested.Used = append(nested.Used, r.Used...)
+			nested.Unresolved = append(nested.Unresolved, r.Unresolved...)
 			args = append(args, v)
 		}
 	}

@@ -173,7 +173,7 @@ func (l *Limiter) Wait(ctx context.Context) error {
 	for {
 		l.mu.Lock()
 		now := time.Now()
-		l.tokens = min(l.rate, l.tokens+now.Sub(l.last).Seconds()*l.rate)
+		l.tokens = min(max(l.rate, 1), l.tokens+now.Sub(l.last).Seconds()*l.rate) // burst ≥ 1 so rates < 1/s still progress
 		if l.tokens < 1 {
 			l.tokens = max(l.tokens, 0)
 		}

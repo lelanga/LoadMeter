@@ -250,6 +250,9 @@ func (s *Service) historyScenario(file, id string) (*model.Scenario, error) {
 	if !histRe.MatchString(id) {
 		return nil, invalid("invalid history id")
 	}
+	if _, err := s.scenarioPath(file); err != nil {
+		return nil, err
+	}
 	sc, err := app.LoadScenario(filepath.Join(s.historyDir(file), id+".json"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("%w: history %s", ErrNotFound, id)
@@ -554,6 +557,9 @@ func (s *Service) Debug(ctx context.Context, file string, vars map[string]string
 	if err != nil {
 		return nil, err
 	}
+	if len(vars) > 0 && sc.Variables == nil {
+		sc.Variables = map[string]string{}
+	}
 	for k, v := range vars {
 		sc.Variables[k] = v
 	}
@@ -592,6 +598,9 @@ func (s *Service) StartRun(req RunRequest) (string, error) {
 	sc, err := s.GetScenario(req.File)
 	if err != nil {
 		return "", err
+	}
+	if len(req.Vars) > 0 && sc.Variables == nil {
+		sc.Variables = map[string]string{}
 	}
 	for k, v := range req.Vars {
 		sc.Variables[k] = v
@@ -766,6 +775,7 @@ func (s *Service) Demo() (string, string, error) {
 }
 
 func (s *Service) Close() {
+	s.StopActiveRecording() // saves the HAR and closes the recording browser
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, a := range s.runs {

@@ -76,6 +76,7 @@ type Window struct {
 	ActiveVUs    int
 	CPUPercent   float64
 	MemMB        float64
+	nodes        map[string]nodeGauge // merged collectors only
 }
 
 // Collector aggregates samples; safe for concurrent use.
@@ -93,6 +94,8 @@ type Collector struct {
 	Dropped   uint64 // arrival-rate iterations that could not start (no free VU)
 	Iters     uint64
 	IterFails uint64
+	delta     *deltaAgg      // non-nil when TrackDeltas was called (distributed agents)
+	nodeVUs   map[string]int // merged collectors: latest active VUs per node
 }
 
 func NewCollector(start time.Time, raw io.Writer) *Collector {
@@ -107,11 +110,19 @@ func NewCollector(start time.Time, raw io.Writer) *Collector {
 	return c
 }
 
-func (c *Collector) window(t time.Time) *Window {
+func (c *Collector) sec(t time.Time) int {
 	sec := int(t.Sub(c.start) / time.Second)
 	if sec < 0 {
 		sec = 0
 	}
+	return sec
+}
+
+func (c *Collector) window(t time.Time) *Window {
+	return c.windowAt(c.sec(t))
+}
+
+func (c *Collector) windowAt(sec int) *Window {
 	for len(c.windows) <= sec {
 		c.windows = append(c.windows, &Window{T: len(c.windows), Hist: Sparse{}, ActiveVUs: c.activeVUs})
 	}
@@ -130,23 +141,14 @@ func (c *Collector) Add(x Sample) {
 	}
 	st.add(&x)
 	w := c.window(end)
-	us := uint64(x.Latency.Microseconds())
 	if x.Kind == KindRequest {
 		c.reqAll.add(&x)
-		w.Requests++
-		if !x.OK {
-			w.Errors++
-		}
-		w.Hist.Record(us)
-		w.SumUS += float64(us)
-		w.MaxUS = max(w.MaxUS, us)
-		w.BytesIn += x.BytesIn
 	} else {
 		c.txAll.add(&x)
-		w.Transactions++
-		if !x.OK {
-			w.TxErrors++
-		}
+	}
+	w.add(&x)
+	if c.delta != nil {
+		c.delta.add(&x, c.sec(end), c.activeVUs)
 	}
 	if c.raw != nil {
 		msg := x.ErrMsg
@@ -167,6 +169,12 @@ func (c *Collector) SetGauge(now time.Time, vus int, cpu, memMB float64) {
 	w.ActiveVUs = max(w.ActiveVUs, vus)
 	w.CPUPercent = max(w.CPUPercent, cpu)
 	w.MemMB = max(w.MemMB, memMB)
+	if c.delta != nil {
+		dw := c.delta.win(c.sec(now), vus)
+		dw.ActiveVUs = max(dw.ActiveVUs, vus)
+		dw.CPUPercent = max(dw.CPUPercent, cpu)
+		dw.MemMB = max(dw.MemMB, memMB)
+	}
 }
 
 func (c *Collector) IterationDone(ok bool) {
@@ -175,12 +183,21 @@ func (c *Collector) IterationDone(ok bool) {
 	if !ok {
 		c.IterFails++
 	}
+	if c.delta != nil {
+		c.delta.iters++
+		if !ok {
+			c.delta.iterFails++
+		}
+	}
 	c.mu.Unlock()
 }
 
 func (c *Collector) DroppedIteration() {
 	c.mu.Lock()
 	c.Dropped++
+	if c.delta != nil {
+		c.delta.dropped++
+	}
 	c.mu.Unlock()
 }
 

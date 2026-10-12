@@ -33,7 +33,7 @@ func TestExpandBasics(t *testing.T) {
 		{"${__randomInt(5,1)}", "${__randomInt(5,1)}", nil, []string{"__randomInt(5,1)"}},
 		{"${__randomInt(a,b)}", "${__randomInt(a,b)}", nil, []string{"__randomInt(a,b)"}},
 		{"${__urlencode(a b&c=d/é)}", "a%20b%26c%3Dd%2F%C3%A9", nil, nil},
-		{"${__urlencode(${user} x)}", "bob%20x", nil, nil}, // nested use not reported, see TestNestedUnresolvedReported
+		{"${__urlencode(${user} x)}", "bob%20x", []string{"user"}, nil}, // nested use is reported
 		{"${__urlencode(-_.~)}", "-_.~", nil, nil},
 		{"${__urlencode()}", "${__urlencode()}", nil, []string{"__urlencode()"}},
 		{"${__env(HOME)}", "${__env(HOME)}", nil, []string{"__env(HOME)"}},
@@ -229,7 +229,6 @@ func TestFunctionsListed(t *testing.T) {
 }
 
 func TestNestedUnresolvedReported(t *testing.T) {
-	t.Skip("BUG: vars.go:106 discards Result of nested Expand inside function args, so an undefined variable in ${__urlencode(${missing})} is neither reported Unresolved nor Used")
 	c := NewContext(1, 1)
 	c.Vars["user"] = "bob"
 	_, res := c.Expand("${__urlencode(${missing})}")

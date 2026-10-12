@@ -148,7 +148,6 @@ func TestLimiterContextCancel(t *testing.T) {
 }
 
 func TestLimiterFractionalRate(t *testing.T) {
-	t.Skip("BUG: safety.go Limiter.Wait caps tokens at `rate`, so for rate<1 (e.g. MaxRPS=0.5) tokens never reach 1 and even the FIRST Wait blocks forever")
 	l := NewLimiter(0.5)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

@@ -56,7 +56,7 @@ phoenix ai test <provider-id>
 | `phoenix ai set-key ID` | Prompts for the key on stdin and stores it (Keychain, Secret Service, or a 0600 file). An environment variable still takes precedence |
 | `phoenix ai test ID` | Sends one tiny prompt to that provider and prints the reply and latency. It respects consent and local-only |
 
-`phoenix ai -h` is not a help screen. It reports `unknown ai subcommand "-h"`. Run `phoenix --help` for the summary line instead.
+`phoenix ai -h` does not print help. It reports `unknown ai subcommand "-h"`. Use `phoenix --help` for the one-line summary.
 
 ### Examples
 
@@ -235,6 +235,59 @@ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol
               '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
   | phoenix mcp --workspace /tmp/phoenix-ws
 ```
+
+### Resources, prompts and progress
+
+Besides tools, `phoenix mcp` serves MCP resources and prompts.
+
+Resources (read-only, no confirmation needed; templates via `resources/templates/list`):
+
+- `phoenix://scenarios/{file}`: scenario JSON, for example `phoenix://scenarios/shop-login.json`.
+- `phoenix://runs/{runId}/summary`: run summary JSON.
+- `phoenix://runs/{runId}/report`: the HTML report (`text/html`).
+- `phoenix://docs/scenario-format`: the scenario format reference, built into the binary.
+
+Ids are validated and path traversal is rejected.
+
+Prompts (`prompts/list`, `prompts/get`), each walking the AI through the right tool sequence:
+
+- `load-test-from-har` (argument `file`)
+- `investigate-slow-run` (argument `runId`)
+- `migrate-jmeter` (argument `file`)
+- `safe-first-test` (argument `url`)
+
+Each prompt reminds the AI that `run_test` needs your explicit confirmation and that only allowlisted hosts (plus loopback) can be tested.
+
+`wait_for_run` (read-only) blocks until a started run ends, for at most 10 minutes. If the client sends `_meta.progressToken`, it sends `notifications/progress` every 2 seconds, then returns the summary (or `status: "running"` on timeout). `run_test` still just starts the run. Clients can cancel an in-flight call with `notifications/cancelled`. `logging/setLevel` is supported.
+
+### HTTP transport
+
+`phoenix mcp --http 127.0.0.1:7880 [--workspace DIR]` serves Streamable HTTP at `POST /mcp`.
+
+- Loopback only.
+- A bearer token is generated into `<config dir>/mcp-token` (0600) and printed at startup. Send `Authorization: Bearer <token>`.
+- `Origin` must be absent or loopback (DNS-rebinding protection), otherwise 403. A missing or wrong token gives 401.
+- `Mcp-Session-Id` is issued on `initialize`.
+- Replies are JSON, or an SSE stream (progress events, then the response) when the client asks for `text/event-stream`.
+- No server-initiated GET stream (405) and no JSON-RPC batching.
+
+### One-command client setup
+
+```
+phoenix mcp install --client claude-desktop|claude-code|cursor|vscode|gemini|windsurf [--workspace DIR] [--project DIR] [--dry-run]
+phoenix mcp uninstall --client <same list>
+```
+
+| Client | File | Key |
+|---|---|---|
+| Claude Desktop | macOS `~/Library/Application Support/Claude/claude_desktop_config.json`; Windows `%APPDATA%\Claude\claude_desktop_config.json`; Linux `~/.config/Claude/claude_desktop_config.json` | `mcpServers` |
+| Cursor | `~/.cursor/mcp.json` | `mcpServers` |
+| VS Code | user-level `mcp.json` in the VS Code user folder, or `<DIR>/.vscode/mcp.json` with `--project DIR` | `servers` (`"type":"stdio"`) |
+| Gemini CLI | `~/.gemini/settings.json` | `mcpServers` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` |
+| Claude Code | no file: runs `claude mcp add phoenix -- <abs phoenix> mcp --workspace <abs>` if `claude` is on PATH (prints it otherwise or with `--dry-run`) | n/a |
+
+The entry uses the absolute path of the running binary. Install merges into the existing JSON, keeps every other server and key, and saves the original as `<file>.bak` first. A file that is not plain JSON (for example with comments) is left untouched. `uninstall` removes only the `phoenix` entry. Restart the client afterwards.
 
 ## UI AI Assistant
 

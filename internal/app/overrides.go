@@ -106,6 +106,9 @@ func TargetHosts(sc *model.Scenario) []string {
 			if j := strings.IndexAny(h, "/?#"); j >= 0 {
 				h = h[:j]
 			}
+			if j := strings.LastIndexByte(h, '@'); j >= 0 {
+				h = h[j+1:] // drop user:password@
+			}
 			if hh, _, err := net.SplitHostPort(h); err == nil {
 				h = hh
 			}

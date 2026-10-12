@@ -9,6 +9,7 @@ import { renderRun } from './run.js';
 import { renderResults } from './results.js';
 import { renderAI } from './ai.js';
 import { renderSettings } from './settings.js';
+import { renderRecord } from './record.js';
 
 const main = document.getElementById('main');
 const title = document.getElementById('top-title');
@@ -23,6 +24,7 @@ const ROUTES = {
   editor: { nav: 'scenarios', title: 'Scenario editor', view: (m, p, c) => renderEditor(m, { file: p[0] }, c) },
   correlate: { nav: 'scenarios', title: 'Correlation review', view: (m, p, c) => renderCorrelate(m, { file: p[0] }, c) },
   import: { nav: 'import', title: 'Import', view: (m, p, c) => renderImport(m, {}, c) },
+  record: { nav: 'record', title: 'Record', view: (m, p, c) => renderRecord(m, {}, c) },
   run: { nav: 'run', title: 'Run & Monitor', view: (m, p, c) => renderRun(m, { id: p[0] }, c) },
   results: { nav: 'results', title: 'Results', view: (m, p, c) => renderResults(m, {}, c) },
   ai: { nav: 'ai', title: 'AI Assistant', view: (m, p, c) => renderAI(m, {}, c) },

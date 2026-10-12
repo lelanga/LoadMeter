@@ -88,11 +88,11 @@ func main() {
 		if errors.Is(err, flag.ErrHelp) {
 			return
 		}
-		fmt.Fprintln(os.Stderr, "error:", err)
 		var ec exitCode
 		if errors.As(err, &ec) {
-			os.Exit(int(ec))
+			os.Exit(int(ec)) // outcome codes (SLA failed, regression) were already reported
 		}
+		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }
@@ -122,6 +122,7 @@ type runFlags struct {
 	allow                                 stringList
 	jsonOut, quiet, yes                   bool
 	set                                   stringList
+	dist                                  distFlags // distributed.go
 }
 
 func addRunFlags(fs *flag.FlagSet, f *runFlags) {
@@ -137,6 +138,7 @@ func addRunFlags(fs *flag.FlagSet, f *runFlags) {
 	fs.BoolVar(&f.quiet, "quiet", false, "no live progress output")
 	fs.BoolVar(&f.yes, "yes", false, "confirm high-impact tests against non-loopback hosts")
 	fs.Var(&f.set, "set", "set a scenario variable, e.g. --set baseUrl=http://127.0.0.1:8080 (repeatable)")
+	addDistFlags(fs, &f.dist)
 }
 
 // applyOverrides applies --set variables and workload flags.
@@ -202,6 +204,9 @@ func runScenario(sc *model.Scenario, baseDir string, f *runFlags) error {
 	}
 	if err := checkTargets(sc, pol, f.yes); err != nil {
 		return err
+	}
+	if f.dist.enabled() {
+		return runDistributed(sc, baseDir, f, pol)
 	}
 	ws := app.Workspace{Dir: f.workspace}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -326,6 +331,10 @@ func isBoolFlag(fs *flag.FlagSet, a string) bool {
 // ---------- other commands ----------
 
 func cmdValidate(args []string) error {
+	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
+		fmt.Fprintln(os.Stderr, "usage: phoenix validate scenario.json")
+		return nil
+	}
 	if len(args) != 1 {
 		return fmt.Errorf("usage: phoenix validate scenario.json")
 	}
@@ -468,7 +477,7 @@ func cmdRuns(args []string) error {
 		if len(s.SLAs) > 0 {
 			sla = map[bool]string{true: "pass", false: "FAIL"}[s.SLAPassed]
 		}
-		fmt.Printf("%-48s %-30s reqs=%-8d p95=%-8.1f err=%-6.2f%% sla=%s\n", id, trunc(s.Scenario, 30), s.Snapshot.Requests.Count, s.Snapshot.Requests.P95Ms, s.Snapshot.Requests.ErrorRate, sla)
+		fmt.Printf("%-48s %-30s reqs=%-8d p95=%-8.1f err=%.2f%% sla=%s\n", id, trunc(s.Scenario, 30), s.Snapshot.Requests.Count, s.Snapshot.Requests.P95Ms, s.Snapshot.Requests.ErrorRate, sla)
 	}
 	return nil
 }
