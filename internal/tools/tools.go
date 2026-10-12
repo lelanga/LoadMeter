@@ -111,7 +111,17 @@ func importPath(s *service.Service, p string) (string, error) {
 	return "", fmt.Errorf("path %s is outside the allowed import folders (%s or the current directory)", p, roots[0])
 }
 
+// extra holds tools contributed by other files in this package (see Register).
+var extra []Tool
+
+// Register adds tools to the registry; call it from an init function.
+func Register(t ...Tool) { extra = append(extra, t...) }
+
 func Registry() []Tool {
+	return append(coreTools(), extra...)
+}
+
+func coreTools() []Tool {
 	return []Tool{
 		{Name: "list_scenarios", ReadOnly: true, Description: "List test scenarios in the workspace with request counts and workload settings.",
 			InputSchema: obj(map[string]any{}),

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -154,3 +155,13 @@ func has(list []string, s string) bool {
 }
 
 func contains(s, sub string) bool { return strings.Contains(s, sub) }
+
+// httptestRedirect starts a server that 302-redirects every request to target.
+func httptestRedirect(t *testing.T, target string) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target, http.StatusFound)
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}

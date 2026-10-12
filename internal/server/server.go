@@ -163,8 +163,14 @@ func (s *Server) Handler() http.Handler {
 	})
 }
 
+// extraRoutes lets other files in this package add API routes (call from init).
+var extraRoutes []func(s *Server, m *http.ServeMux)
+
 func (s *Server) routes(m *http.ServeMux) {
 	svc := s.Svc
+	for _, add := range extraRoutes {
+		add(s, m)
+	}
 	m.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) })
 	m.HandleFunc("GET /api/session", func(w http.ResponseWriter, r *http.Request) {
 		abs, _ := filepath.Abs(svc.WS.Dir)
