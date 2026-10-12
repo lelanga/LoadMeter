@@ -59,3 +59,49 @@ Honest list. Anything not listed here and not in the support matrices should be 
 - Equal split (plus optional local share), no capacity weighting; ramp targets may be off by ±1 VU between stages.
 - `sequential`/`random` data gives every node the full data set (values repeat across nodes); `unique` exhaustion is per node.
 - The controller does not cap total VUs across agents; each agent caps its own share.
+
+## Access-log replay
+- Writes replay with an empty body; ids become random values so most will 404 on a real target (supply a data source of real ids).
+- Real-time replay, one stage per minute (linear interpolation smooths the curve). `peak` window is fixed at 15 minutes.
+- Session reconstruction (IP + user agent) is approximate; NAT merges users. Log timestamps have 1 s resolution.
+- Only combined/common layouts for nginx/Apache (no custom `log_format`). Weighted groups and think distributions export to JMeter/k6 as `partial`.
+
+## Failure triage and summaries
+- **Verifier scope**: it checks numbers only. It cannot tell whether a true number is attached to the right thing. It does not check causal claims or spelled-out compounds ("twenty five"), and it allows a number that rounds from any fact, so a coincidentally close value passes.
+- **One AI attempt**: there is one model call, no retry; any ungrounded number means the template is shown.
+- **Quoted values are stripped**: two different extractor names in the same request merge into one cluster. The example text keeps the name and the explanation quotes it.
+- **Drain order**: templates depend on row order, so they can differ slightly if the CSV is shuffled. The same file always gives the same result.
+- **Transaction membership**: `raw.csv` has no transaction column, so it comes from `scenario.json` by request label. A transaction's own failures are counted but not clustered.
+- **`raw.csv` missing**: this happens with `--no-raw` or distributed runs. Triage is then coarse: no timing, no messages, no change-point or "after extraction" logic.
+- **Generator evidence** relies on the CPU timeline in the summary (above 85% of the machine's cores); it cannot detect sockets or file descriptors unless the error text says so.
+- **Report hook**: it triages only when `Render` is given an `*os.File` next to `raw.csv`, which holds for all three callers (`internal/app/runner.go`, `cmdReport`, distributed). For a distributed run without `raw.csv`, the report gets the coarse section.
+- **Classification order**: while testing, 429 and 5xx after an extraction failure were wrongly labelled "script". The final order puts them on the target side first; tests cover it.
+
+## Capacity finder
+- Knee detection only tested on synthetic curves; the mock has no load-sensitive latency.
+- Each step is a fresh run; achieved throughput reads about 1% high from warm-up spillover.
+- Generator CPU is this process's CPU (includes an in-process mock); not measured on Windows.
+- Dropped iterations with latency within SLA mark a step generator-limited, which can hide a target limit with a tiny VU pool.
+- Bisection steps are single measurements.
+- Capacity search vs normal run exclusion is a check, not a lock.
+- MCP `find_capacity` lacks the open-world annotation.
+- Existing flaky test: `internal/service` `TestStartRunWithVarsOnScenarioWithoutVariables` (TempDir cleanup race, ~2-3/10).
+
+## Statistics and gates
+- Window samples test the typical per-second percentile, not the whole-run percentile; per-second p99 under ~100 requests approximates the max.
+- `raw.csv` latency is whole milliseconds: transaction comparisons can't see sub-ms changes.
+- Transactions without raw.csv in both run folders (summary-only compare, distributed, `compare_runs` MCP) are inconclusive/skipped.
+- Autocorrelation is corrected for lag-1 only; bursty errors overstate confidence.
+- MSER warm-up trim can cut a fast start too (capped at half the run).
+- Diagnose uses the whole-run timeline only; memory drift is the generator's.
+- Abort-on-breach ignores p90, rps and scoped SLAs; not in distributed runs.
+- CUSUM and binary segmentation are implemented but not wired in.
+
+## HTTP layer
+- Brotli/zstd not decoded; digest `auth-int` unsupported.
+- Hidden-retry count exact for HTTP/1.1, best effort for HTTP/2.
+- Lifetime recycling sends a visible `Connection: close` on HTTP/1.1.
+- Per-request TLS timeout fails on time, but the handshake is bounded only by the largest TLS timeout.
+- DNS overrides don't apply to proxied targets. Client certs per host, not per VU.
+- `hiddenRetries`/`newConnections` not merged in distributed aggregation.
+- Flaky: `TestStartRunWithVarsOnScenarioWithoutVariables` (TempDir race); `TestPerformanceOneMillionRows` can time out under load.

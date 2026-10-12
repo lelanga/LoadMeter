@@ -32,6 +32,18 @@ type Sample struct {
 	BytesOut  int64
 	VU        int
 	Iteration int
+	// HTTP timing breakdown (requests only). Connect follows JMeter: time from
+	// the sample start until the connection was ready (DNS + TCP + TLS, and
+	// proxy CONNECT), 0 when a pooled connection was reused.
+	Connect    time.Duration
+	DNS        time.Duration
+	TLS        time.Duration
+	ConnReused bool
+	// Retries counts requests Go's transport resent transparently on another
+	// connection (hidden idempotent retries); 0 normally.
+	Retries int
+	// BodyBytes is the decoded response body size (BytesIn counts wire bytes).
+	BodyBytes int64
 }
 
 type Stats struct {
@@ -94,6 +106,8 @@ type Collector struct {
 	Dropped   uint64 // arrival-rate iterations that could not start (no free VU)
 	Iters     uint64
 	IterFails uint64
+	Retries   uint64         // hidden transport retries (see Sample.Retries)
+	NewConns  uint64         // requests that opened a new connection
 	delta     *deltaAgg      // non-nil when TrackDeltas was called (distributed agents)
 	nodeVUs   map[string]int // merged collectors: latest active VUs per node
 }
@@ -105,7 +119,10 @@ func NewCollector(start time.Time, raw io.Writer) *Collector {
 		c.raw = csv.NewWriter(c.rawBuf)
 		// JMeter JTL-compatible leading columns, plus Load Meter extras.
 		_ = c.raw.Write([]string{"timeStamp", "elapsed", "label", "responseCode", "responseMessage", "threadName",
-			"success", "failureMessage", "bytes", "sentBytes", "Latency", "URL", "kind"})
+			"success", "failureMessage", "bytes", "sentBytes", "Latency", "URL", "kind",
+			// Appended later; consumers read columns by name, so order above is stable.
+			"Connect", "dnsMs", "tlsMs", "connReused", "retries", "bodyBytes"})
+		c.raw.Flush() // header goes to rawBuf now; rows are appended to rawBuf directly
 	}
 	return c
 }
@@ -131,8 +148,18 @@ func (c *Collector) windowAt(sec int) *Window {
 
 func (c *Collector) Add(x Sample) {
 	end := x.Start.Add(x.Latency)
+	var rec *rawEnc
+	if c.raw != nil {
+		rec = encodeRaw(&x) // formatted outside the lock to keep the critical section short
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if x.Retries > 0 {
+		c.Retries += uint64(x.Retries)
+	}
+	if x.Kind == KindRequest && !x.ConnReused && x.Connect > 0 {
+		c.NewConns++
+	}
 	key := x.Kind + "\x00" + x.Name
 	st := c.byName[key]
 	if st == nil {
@@ -150,13 +177,9 @@ func (c *Collector) Add(x Sample) {
 	if c.delta != nil {
 		c.delta.add(&x, c.sec(end), c.activeVUs)
 	}
-	if c.raw != nil {
-		msg := x.ErrMsg
-		_ = c.raw.Write([]string{
-			strconv.FormatInt(x.Start.UnixMilli(), 10), strconv.FormatInt(x.Latency.Milliseconds(), 10), x.Name,
-			strconv.Itoa(x.Status), x.ErrKind, "vu-" + strconv.Itoa(x.VU), strconv.FormatBool(x.OK), msg,
-			strconv.FormatInt(x.BytesIn, 10), strconv.FormatInt(x.BytesOut, 10),
-			strconv.FormatInt(x.TTFB.Milliseconds(), 10), x.URL, x.Kind})
+	if rec != nil {
+		_, _ = c.rawBuf.Write(rec.buf.Bytes())
+		rawEncPool.Put(rec)
 	}
 }
 
@@ -263,6 +286,10 @@ type Snapshot struct {
 	IterFailures uint64      `json:"iterationFailures"`
 	Dropped      uint64      `json:"droppedIterations"`
 	ActiveVUs    int         `json:"activeVUs"`
+	// HiddenRetries counts requests Go's transport resent transparently on a
+	// new connection; NewConnections counts requests that opened one.
+	HiddenRetries  uint64 `json:"hiddenRetries,omitempty"`
+	NewConnections uint64 `json:"newConnections,omitempty"`
 }
 
 func ms(us float64) float64 { return math.Round(us/10) / 100 }
@@ -301,7 +328,8 @@ func (c *Collector) Snapshot(now time.Time, fromWindow int) Snapshot {
 	defer c.mu.Unlock()
 	secs := now.Sub(c.start).Seconds()
 	snap := Snapshot{ElapsedSec: math.Round(secs*10) / 10, Requests: toSet(c.reqAll, secs), Transactions: toSet(c.txAll, secs),
-		Iterations: c.Iters, IterFailures: c.IterFails, Dropped: c.Dropped, ActiveVUs: c.activeVUs}
+		Iterations: c.Iters, IterFailures: c.IterFails, Dropped: c.Dropped, ActiveVUs: c.activeVUs,
+		HiddenRetries: c.Retries, NewConnections: c.NewConns}
 	keys := make([]string, 0, len(c.byName))
 	for k := range c.byName {
 		keys = append(keys, k)

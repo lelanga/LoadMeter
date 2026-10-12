@@ -81,6 +81,9 @@ func (e *exporter) steps(steps []model.Step, loc string) {
 		case model.StepRequest:
 			e.request(st, l)
 		case model.StepTransaction, model.StepGroup:
+			if st.Select != "" {
+				e.rep.Add("group", st.Name, l, model.Partial, "weighted selection is not exported: every inner step runs in order; pick one weighted request manually")
+			}
 			e.line("group(%s, function () {", e.lit(st.Name))
 			e.ind++
 			e.steps(st.Steps, l+".steps")
@@ -89,6 +92,9 @@ func (e *exporter) steps(steps []model.Step, loc string) {
 			e.flush(st.Type, st.Name, l, "")
 		case model.StepThink:
 			t := st.Think
+			if t.Distribution != nil && t.Distribution.Type != model.DistUniform {
+				e.rep.Add("think", st.Name, l, model.Partial, "think-time distribution is not exported; min/max are used")
+			}
 			e.line("_think(%d, %d, %s);", ms(t.Min), maxI(ms(t.Max), ms(t.Min)), num(e.scale))
 			e.rep.Add("think", st.Name, l, model.Supported, "")
 		case model.StepLoop:

@@ -615,6 +615,9 @@ func (s *Service) StartRun(req RunRequest) (string, error) {
 	if _, err := app.CheckTargets(sc, pol, req.Confirm); err != nil {
 		return "", err
 	}
+	if s.CapacityBusy() { // capacity.go
+		return "", ErrBusy
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.activeID != "" {
@@ -776,6 +779,7 @@ func (s *Service) Demo() (string, string, error) {
 
 func (s *Service) Close() {
 	s.StopActiveRecording() // saves the HAR and closes the recording browser
+	_ = s.StopCapacity()    // capacity.go: partial result is still saved
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, a := range s.runs {

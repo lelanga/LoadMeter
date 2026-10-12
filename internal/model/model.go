@@ -6,6 +6,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 )
@@ -67,6 +68,9 @@ type Defaults struct {
 	InsecureSkipVerify bool     `json:"insecureSkipVerify,omitempty"`
 	DisableCookies     bool     `json:"disableCookies,omitempty"`
 	MaxBodyBytes       int64    `json:"maxBodyBytes,omitempty"` // response bytes kept for extraction/assertions
+	// HTTPOptions (timeouts, compression, connections, auth, TLS, DNS, proxy;
+	// see http.go) is embedded so its fields sit directly under "defaults".
+	HTTPOptions
 }
 
 type Header struct {
@@ -116,11 +120,30 @@ type Step struct {
 	Cond     string   `json:"condition,omitempty"` // if: `${a} == b`, `${a} != b`, `${a}` (non-empty)
 	Set      []KV     `json:"set,omitempty"`       // set variables
 	Comment  string   `json:"comment,omitempty"`
+	// Select (group only): "" runs every inner step in order; "weighted" runs exactly
+	// one inner step per execution, chosen at random in proportion to its Weight.
+	Select string `json:"select,omitempty"`
+	// Weight is this step's relative share inside a weighted group (default 1; 0 = never).
+	Weight *float64 `json:"weight,omitempty"`
+}
+
+// Group selection modes.
+const SelectWeighted = "weighted"
+
+// StepWeight returns the effective weight of a step inside a weighted group.
+func (s *Step) StepWeight() float64 {
+	if s.Weight == nil {
+		return 1
+	}
+	return *s.Weight
 }
 
 type Think struct {
 	Min Duration `json:"min"`
 	Max Duration `json:"max,omitempty"` // uniform random in [min,max] when max > min
+	// Distribution, when set, replaces the uniform draw: the pause is sampled from it
+	// (in seconds) and clamped to [Min, Max] (Max = 0 means no upper clamp).
+	Distribution *Distribution `json:"distribution,omitempty"`
 }
 
 type Request struct {
@@ -134,6 +157,8 @@ type Request struct {
 	FollowRedirects *bool       `json:"followRedirects,omitempty"`
 	Extract         []Extractor `json:"extract,omitempty"`
 	Assert          []Assertion `json:"assert,omitempty"`
+	// RequestHTTPOptions holds per-request connect/TLS/response-header timeouts (http.go).
+	RequestHTTPOptions
 }
 
 type Part struct {
@@ -152,6 +177,7 @@ const (
 	ExCookie   = "cookie"
 	ExBoundary = "boundary"
 	ExStatus   = "status"
+	ExTiming   = "timing" // Expr: total|ttfb|connect|dns|tls -> milliseconds
 )
 
 type Extractor struct {
@@ -174,7 +200,7 @@ const (
 	AsNotContains = "not_contains" // body does not contain Value
 	AsRegex       = "regex"        // body matches Expr
 	AsJSONPath    = "jsonpath"     // Expr exists; equals Value when set
-	AsMaxLatency  = "max_latency"  // Value: duration
+	AsMaxLatency  = "max_latency"  // Value: duration; Expr: total (default)|ttfb|connect|dns|tls
 	AsHeader      = "header"       // header Expr equals/contains Value
 )
 
@@ -239,6 +265,9 @@ func (s *Scenario) Validate() []string {
 			if st.Name != "" {
 				where += " (" + st.Name + ")"
 			}
+			if st.Select != "" && st.Type != StepGroup {
+				p = append(p, where+": select is only valid on a group")
+			}
 			switch st.Type {
 			case StepRequest:
 				if st.Request == nil {
@@ -257,11 +286,19 @@ func (s *Scenario) Validate() []string {
 					}
 					switch e.Type {
 					case ExJSONPath, ExRegex, ExXPath, ExHeader, ExCookie, ExBoundary, ExStatus:
+					case ExTiming:
+						if !validTiming(e.Expr) {
+							p = append(p, fmt.Sprintf("%s: timing extractor expr %q must be one of %v", where, e.Expr, TimingNames))
+						}
 					default:
 						p = append(p, fmt.Sprintf("%s: unknown extractor type %q", where, e.Type))
 					}
 				}
+				p = append(p, st.Request.RequestHTTPOptions.validate(where)...)
 				for _, a := range st.Request.Assert {
+					if a.Type == AsMaxLatency && a.Expr != "" && !validTiming(a.Expr) {
+						p = append(p, fmt.Sprintf("%s: max_latency expr %q must be one of %v", where, a.Expr, TimingNames))
+					}
 					switch a.Type {
 					case AsStatus, AsContains, AsNotContains, AsRegex, AsJSONPath, AsMaxLatency, AsHeader:
 					default:
@@ -272,6 +309,24 @@ func (s *Scenario) Validate() []string {
 				if st.Type == StepTransaction && st.Name == "" {
 					p = append(p, where+": transaction needs a name")
 				}
+				switch {
+				case st.Select == "":
+				case st.Select != SelectWeighted:
+					p = append(p, fmt.Sprintf("%s: unknown select mode %q (expected %q)", where, st.Select, SelectWeighted))
+				default:
+					total := 0.0
+					for _, c := range st.Steps {
+						if c.Weight != nil && (*c.Weight < 0 || math.IsNaN(*c.Weight) || math.IsInf(*c.Weight, 0)) {
+							p = append(p, where+": weights must be finite and >= 0")
+						}
+						if !c.Disabled {
+							total += c.StepWeight()
+						}
+					}
+					if total <= 0 {
+						p = append(p, where+": weighted group needs at least one enabled step with weight > 0")
+					}
+				}
 				walk(where+".steps", st.Steps)
 			case StepLoop:
 				if st.Count < 1 {
@@ -281,6 +336,10 @@ func (s *Scenario) Validate() []string {
 			case StepThink:
 				if st.Think == nil {
 					p = append(p, where+": think step without think time")
+				} else if st.Think.Distribution != nil {
+					if err := st.Think.Distribution.Validate(); err != nil {
+						p = append(p, where+": "+err.Error())
+					}
 				}
 			case StepSetVar:
 			default:
@@ -331,6 +390,7 @@ func (s *Scenario) Validate() []string {
 			p = append(p, fmt.Sprintf("data source %q: unknown mode %q", d.Name, d.Mode))
 		}
 	}
+	p = append(p, s.Defaults.validateHTTP()...)
 	for _, sla := range s.SLAs {
 		switch sla.Op {
 		case "<", "<=", ">", ">=":

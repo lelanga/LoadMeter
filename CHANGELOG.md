@@ -24,3 +24,12 @@
 - Web server panicked at start-up because of a route-pattern conflict (`/api/` vs `GET /`); covered by a test now.
 - CLI flag reordering mis-parsed value flags such as `--apply all`; it now reads flag kinds from each command's flag set.
 - UI read error rates as fractions (API returns percent) and read live events without their wrapper.
+
+## Unreleased: JMeter-informed upgrade
+- Research: JMeter source analysis (G01-G20 gaps), smart-feature survey.
+- Access-log replay (`import-log`), weighted groups, think-time distributions.
+- Failure triage (`triage`) and grounded plain-English summaries (`summarize`).
+- Capacity/breaking-point finder (`capacity`, MCP `find_capacity`).
+- Statistical compare, `gate` (JUnit, exit codes 0/3/4), `suggest-slas`, `--abort-on-breach`, change-point/drift findings.
+- HTTP parity: compression decoding, split timeouts and timings, per-VU connections, HTTP/2, hidden-retry accounting, basic/digest/bearer auth, mTLS, DNS override, proxy (all inside the safety allowlist).
+- Fixes: fractional ramp start, arrival-pool VU leak, per-run `__counter`.

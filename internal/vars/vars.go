@@ -17,8 +17,6 @@ import (
 	"time"
 )
 
-var globalCounter atomic.Int64
-
 // EnvPrefix restricts ${__env(NAME)} to variables starting with this prefix so an
 // imported (untrusted) script cannot read arbitrary secrets from the environment.
 const EnvPrefix = "LOADMETER_"
@@ -28,6 +26,11 @@ type Context struct {
 	VU   int
 	Iter int
 	Rand *mrand.Rand
+	// Counter backs ${__counter()}. The engine points every VU of a run at
+	// the run's counter, so the sequence restarts at 1 for each run (it used
+	// to be a process-wide global that kept counting across runs in `serve`).
+	// When nil, the context lazily uses its own counter.
+	Counter *atomic.Int64
 }
 
 func NewContext(vu int, seed uint64) *Context {
@@ -160,7 +163,10 @@ func (c *Context) callInto(expr string, nested *Result) (string, error) {
 		}
 		return strconv.FormatInt(time.Now().UnixMilli(), 10), nil
 	case "__counter":
-		return strconv.FormatInt(globalCounter.Add(1), 10), nil
+		if c.Counter == nil {
+			c.Counter = new(atomic.Int64)
+		}
+		return strconv.FormatInt(c.Counter.Add(1), 10), nil
 	case "__vu":
 		return strconv.Itoa(c.VU), nil
 	case "__iteration":

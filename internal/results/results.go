@@ -33,6 +33,16 @@ type Finding struct {
 	Severity string `json:"severity"` // info | warning | critical
 	Title    string `json:"title"`
 	Evidence string `json:"evidence"`
+	// Optional detail for timeline findings (change points, drift).
+	Method    string    `json:"method,omitempty"`
+	Interval  *Interval `json:"interval,omitempty"`
+	Magnitude string    `json:"magnitude,omitempty"`
+}
+
+// Interval is a span of the run timeline in seconds since start.
+type Interval struct {
+	FromSec int `json:"fromSec"`
+	ToSec   int `json:"toSec"`
 }
 
 type Environment struct {
@@ -247,25 +257,9 @@ func Diagnose(s metrics.Snapshot, slas []SLAResult) []Finding {
 		f = append(f, Finding{Kind: "observation", Severity: "critical", Title: "Requests blocked by the safety allowlist",
 			Evidence: fmt.Sprintf("%d requests targeted hosts that are not allowlisted.", s.Requests.ErrorKind["blocked_by_policy"])})
 	}
-	// Errors rising with load: compare error rate in the first and second half of the timeline.
+	// Level shifts and drift in the per-second timeline (change-point detection).
+	f = append(f, timelineFindings(s.Timeline)...)
 	if tl := s.Timeline; len(tl) >= 6 {
-		h := len(tl) / 2
-		e1, r1, e2, r2, v1, v2 := 0.0, 0.0, 0.0, 0.0, 0, 0
-		for i, w := range tl {
-			if i < h {
-				e1 += float64(w.Errors)
-				r1 += w.RPS
-				v1 = max(v1, w.VUs)
-			} else {
-				e2 += float64(w.Errors)
-				r2 += w.RPS
-				v2 = max(v2, w.VUs)
-			}
-		}
-		if r1 > 0 && r2 > 0 && v2 > v1 && e2/r2 > 2*e1/r1+0.01 {
-			f = append(f, Finding{Kind: "observation", Severity: "warning", Title: "Errors increased as load increased",
-				Evidence: fmt.Sprintf("Error rate %.2f%% (peak %d VUs) in the first half vs %.2f%% (peak %d VUs) in the second half.", e1/r1*100, v1, e2/r2*100, v2)})
-		}
 		// Load generator saturation.
 		var hiCPU int
 		for _, w := range tl {
@@ -303,7 +297,12 @@ type Delta struct {
 	Baseline float64 `json:"baseline"`
 	Current  float64 `json:"current"`
 	Change   float64 `json:"changePercent"`
-	Worse    bool    `json:"worse"`
+	Worse    bool    `json:"worse"` // true exactly when Verdict is "regression"
+	// Statistical verdict (absent in summaries written before it existed).
+	Verdict       string      `json:"verdict,omitempty"` // regression | improvement | no-change | inconclusive
+	Reason        string      `json:"reason,omitempty"`
+	Informational bool        `json:"informational,omitempty"` // never counted as a regression (rps)
+	Stats         *DeltaStats `json:"stats,omitempty"`
 }
 
 type Comparison struct {
@@ -311,45 +310,22 @@ type Comparison struct {
 	Deltas      []Delta `json:"deltas"`
 	Regressions int     `json:"regressions"`
 	Note        string  `json:"note"`
+	// Statistical comparison (optional fields; see CompareWith).
+	Verdict      string   `json:"verdict,omitempty"` // overall: regression | improvement | no-change | inconclusive
+	Improvements int      `json:"improvements,omitempty"`
+	Inconclusive int      `json:"inconclusive,omitempty"`
+	Alpha        float64  `json:"alpha,omitempty"`
+	MinEffectPct float64  `json:"minEffectPct,omitempty"`
+	MinEffectMs  float64  `json:"minEffectMs,omitempty"`
+	MinErrorPP   float64  `json:"minErrorPP,omitempty"`
+	Method       string   `json:"method,omitempty"`
+	Warnings     []string `json:"warnings,omitempty"`
 }
 
-// Compare reports metric deltas; regressions use a 10% + 5ms threshold for latency.
+// Compare runs CompareWith with the default options (alpha 0.05, minimum
+// effect 5% and 2 ms, errors +1 percentage point, at least 10 windows).
 func Compare(base, cur *Summary) *Comparison {
-	c := &Comparison{BaselineRun: base.RunID, Note: "Latency regression = >10% and >5ms worse; error regression = +1 percentage point. Percentiles come from each run's full histogram."}
-	add := func(name string, b, n metrics.MetricSet) {
-		for _, m := range []struct {
-			k    string
-			a, z float64
-			lat  bool
-		}{{"p50Ms", b.P50Ms, n.P50Ms, true}, {"p95Ms", b.P95Ms, n.P95Ms, true}, {"p99Ms", b.P99Ms, n.P99Ms, true},
-			{"errorRate", b.ErrorRate, n.ErrorRate, false}, {"rps", b.RPS, n.RPS, false}} {
-			d := Delta{Name: name, Metric: m.k, Baseline: m.a, Current: m.z}
-			if m.a > 0 {
-				d.Change = math.Round((m.z-m.a)/m.a*10000) / 100
-			}
-			switch {
-			case m.lat:
-				d.Worse = m.z > m.a*1.1 && m.z-m.a > 5
-			case m.k == "errorRate":
-				d.Worse = m.z-m.a >= 1
-			}
-			if d.Worse {
-				c.Regressions++
-			}
-			c.Deltas = append(c.Deltas, d)
-		}
-	}
-	add("ALL", base.Snapshot.Requests, cur.Snapshot.Requests)
-	bt := map[string]metrics.MetricSet{}
-	for _, n := range base.Snapshot.ByTx {
-		bt[n.Name] = n.MetricSet
-	}
-	for _, n := range cur.Snapshot.ByTx {
-		if b, ok := bt[n.Name]; ok {
-			add("tx:"+n.Name, b, n.MetricSet)
-		}
-	}
-	return c
+	return CompareWith(base, cur, DefaultCompareOptions())
 }
 
 // ---------- Persistence ----------

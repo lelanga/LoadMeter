@@ -7,9 +7,12 @@ import (
 	"html/template"
 	"io"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/lelanga/loadmeter/internal/results"
+	"github.com/lelanga/loadmeter/internal/triage"
 )
 
 type series struct {
@@ -86,6 +89,7 @@ func short(v float64) string {
 type view struct {
 	*results.Summary
 	Charts          []template.HTML
+	Triage          template.HTML
 	Observations    []results.Finding
 	Hypotheses      []results.Finding
 	Recommendations []string
@@ -133,6 +137,12 @@ func dedupe(a []string) []string {
 // Render writes the HTML report.
 func Render(w io.Writer, s *results.Summary, description string) error {
 	v := view{Summary: s, Objective: description}
+	// Failure triage: the report file sits next to raw.csv in the run folder.
+	if f, ok := w.(*os.File); ok && s.Snapshot.Requests.Errors > 0 {
+		if res, err := triage.AnalyzeRun(filepath.Dir(f.Name()), s); err == nil {
+			v.Triage = res.HTMLSection(10)
+		}
+	}
 	tl := s.Snapshot.Timeline
 	col := func(f func(i int) float64) []float64 {
 		out := make([]float64, len(tl))
@@ -250,14 +260,16 @@ code{background:var(--card);padding:1px 4px;border-radius:4px}
 
 {{if .Baseline}}<h2>Comparison with baseline {{.Baseline.BaselineRun}}</h2>
 <p class="muted">{{.Baseline.Note}}</p>
-<table><tr><th>Scope</th><th>Metric</th><th>Baseline</th><th>Current</th><th>Change</th><th></th></tr>
-{{range .Baseline.Deltas}}<tr><td>{{.Name}}</td><td>{{.Metric}}</td><td>{{.Baseline}}</td><td>{{.Current}}</td><td>{{.Change}}%</td><td>{{if .Worse}}<span class="badge bad">regression</span>{{end}}</td></tr>{{end}}</table>{{end}}
+{{if .Baseline.Verdict}}<h3>Statistical comparison: {{.Baseline.Verdict}}</h3><p class="muted">{{.Baseline.Method}}.{{range .Baseline.Warnings}} Warning: {{.}}{{end}}</p>{{end}}
+<table><tr><th>Scope</th><th>Metric</th><th>Baseline</th><th>Current</th><th>Change</th><th>Verdict</th><th>Reason</th></tr>
+{{range .Baseline.Deltas}}<tr><td>{{.Name}}</td><td>{{.Metric}}</td><td>{{.Baseline}}</td><td>{{.Current}}</td><td>{{.Change}}%</td><td>{{if .Worse}}<span class="badge bad">regression</span>{{else}}{{.Verdict}}{{end}}</td><td class="muted">{{.Reason}}</td></tr>{{end}}</table>{{end}}
 
 {{if .Agents}}<h2>Load agents</h2>
 <p class="muted">Distributed run: overall metrics above are merged from every node's full histograms.</p>
 <table><tr><th>Node</th><th>Address</th><th>Status</th><th>VUs</th><th>Requests</th><th>Errors</th><th>p95 ms</th><th>Clock skew ms</th></tr>
 {{range .Agents}}<tr><td>{{.ID}}</td><td>{{if .Address}}{{.Address}}{{else}}local{{end}}</td><td>{{.Status}}{{if .Error}} — {{.Error}}{{end}}</td><td>{{.VUs}}</td><td>{{.Requests}}</td><td>{{.Errors}}</td><td>{{f1 .P95Ms}}</td><td>{{f1 .ClockSkewMs}}</td></tr>{{end}}</table>{{end}}
 
+{{.Triage}}
 <h2>Findings</h2>
 <h3>Observed facts</h3>{{range .Observations}}<div class="finding {{.Severity}}"><b>{{.Title}}</b><br>{{.Evidence}}</div>{{else}}<p class="muted">None.</p>{{end}}
 <h3>Hypotheses (need confirmation)</h3>{{range .Hypotheses}}<div class="finding {{.Severity}}"><b>{{.Title}}</b><br>{{.Evidence}}</div>{{else}}<p class="muted">None.</p>{{end}}

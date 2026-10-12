@@ -106,7 +106,7 @@ func TestRampingVUsRampDown(t *testing.T) {
 func TestStageTarget(t *testing.T) {
 	stages := []model.Stage{{Duration: dur(10 * time.Second), Target: 100}, {Duration: dur(10 * time.Second), Target: 100}, {Duration: dur(10 * time.Second), Target: 0}}
 	tests := []struct {
-		start int
+		start float64
 		el    time.Duration
 		want  float64
 	}{
@@ -115,7 +115,7 @@ func TestStageTarget(t *testing.T) {
 	}
 	for _, tc := range tests {
 		if got := stageTarget(tc.start, stages, tc.el); math.Abs(got-tc.want) > 0.001 {
-			t.Errorf("start=%d el=%v got %v want %v", tc.start, tc.el, got, tc.want)
+			t.Errorf("start=%v el=%v got %v want %v", tc.start, tc.el, got, tc.want)
 		}
 	}
 	if got := stageTarget(5, nil, time.Second); got != 5 {

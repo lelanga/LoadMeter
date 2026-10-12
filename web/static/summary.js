@@ -1,6 +1,8 @@
 // Shared renderers for run metrics: tables, status distribution, SLA checks, summary view.
 import { h, badge, fmtMs, fmtNum, fmtRate, fmtTime, fmtClock, renderValue, enc, isAdv, jsonPre, dataTable, muted } from './ui.js';
 import { latencyChart, throughputChart, errorsChart } from './charts.js';
+import { get } from './api.js';
+import { button, loading, errorBox, note } from './ui.js';
 
 // Named entries may be {name, ...MetricSet} or {name, metrics:{...}}
 const metricsOf = (n) => (n && n.metrics && typeof n.metrics === 'object' ? n.metrics : n) || {};
@@ -104,6 +106,50 @@ export function downloads(runId) {
     a(`${base}/summary.json`, 'Summary JSON', { download: '' }));
 }
 
+// ---- Summary and Failures cards (grounded summary + failure triage) ----
+const SIDE_LABEL = { script: 'Test script', target: 'Target system', generator: 'Load generator', policy: 'Safety policy', unknown: 'Unknown' };
+const SIDE_KIND = { script: 'warn', target: 'bad', generator: 'warn', policy: 'info', unknown: 'neutral' };
+
+export function summaryCard(runId) {
+  const body = h('div', {});
+  const load = async (useAI) => {
+    body.replaceChildren(loading(useAI ? 'Asking the AI to reword (its numbers are checked)...' : 'Writing summary...'));
+    try {
+      const r = await get(`/api/runs/${enc(runId)}/summary${useAI ? '?ai=1' : ''}`);
+      body.replaceChildren(
+        (r.lines || []).map((l) => h('p', {}, l)),
+        h('p', { class: 'muted small' }, badge(r.source === 'ai' ? 'AI wording, numbers verified' : 'Built-in summary, every number from the run data', r.source === 'ai' ? 'info' : 'neutral')),
+        r.fallback ? note('warn', r.fallback) : null,
+        button(r.source === 'ai' ? 'Show the built-in summary' : 'Reword with AI', () => load(r.source !== 'ai'), { small: true }));
+    } catch (e) { body.replaceChildren(errorBox(e)); }
+  };
+  load(false);
+  return h('div', { class: 'card' }, h('h2', {}, 'Summary'), body);
+}
+
+export function failuresCard(runId) {
+  const body = h('div', {}, loading('Grouping failures...'));
+  get(`/api/runs/${enc(runId)}/triage?top=10`).then((r) => {
+    if (!r.totalFailures) { body.replaceChildren(h('p', { class: 'muted' }, 'No failed requests.')); return; }
+    const adv = isAdv();
+    const rows = (r.clusters || []).map((c) => h('tr', {},
+      h('td', {}, badge(SIDE_LABEL[c.side] || c.side, SIDE_KIND[c.side] || 'neutral'), h('div', { class: 'muted small' }, c.confidence + ' confidence')),
+      h('td', { class: 'num' }, `${fmtNum(c.count)} (${fmtNum(c.percent, 1)}%)`),
+      h('td', { class: 'num' }, r.coarse ? 'n/a' : `${fmtNum(c.firstSeenSec, 1)} s` + (c.beganAtChangePoint ? ' (at a change point)' : '')),
+      h('td', {}, h('strong', {}, c.request), c.status ? h('span', { class: 'muted' }, ` HTTP ${c.status}`) : null,
+        h('div', {}, c.explanation), h('div', { class: 'muted small' }, 'Next check: ' + c.nextCheck),
+        adv ? [h('div', { class: 'small' }, h('code', {}, c.template)), h('div', { class: 'muted small' }, `kind ${c.errorKind} - priority ${c.priority} - example: ${(c.example && c.example.message) || ''}`)] : null)));
+    body.replaceChildren(
+      h('p', { class: 'muted small' }, `${fmtNum(r.totalFailures)} of ${fmtNum(r.totalRequests)} requests failed. Failures are grouped by similar message and request; "likely side" is a rule-based hint to check first, not proof.` + (r.note ? ' ' + r.note : '')),
+      h('div', { class: 'tw' }, h('table', {}, h('caption', { class: 'sr' }, 'Failure groups'),
+        h('thead', {}, h('tr', {}, ['Likely side', 'Failures', 'First seen', 'What happened'].map((t, i) => h('th', { class: i === 1 || i === 2 ? 'num' : '' }, t)))),
+        h('tbody', {}, rows))),
+      (r.signals || []).map((x) => note('warn', `${SIDE_LABEL[x.side] || x.side}: ${x.text}`)),
+      r.clustersHidden ? h('p', { class: 'muted small' }, `${r.clustersHidden} lower-priority groups not shown.`) : null);
+  }).catch((e) => body.replaceChildren(errorBox(e)));
+  return h('div', { class: 'card' }, h('h2', {}, 'Failures'), body);
+}
+
 export function renderSummary(s) {
   const m = s.metrics || {};
   const root = h('div', {});
@@ -115,6 +161,10 @@ export function renderSummary(s) {
       h('div', { class: 'actions' }, badge(String(s.status || 'unknown'), s.status === 'completed' || s.status === 'done' ? 'ok' : s.status === 'failed' ? 'bad' : 'info'),
         hasSLAs ? badge(passed ? 'SLAs passed' : 'SLAs breached', passed ? 'ok' : 'bad') : badge('no SLAs', 'neutral'))),
     metricTiles(m), downloads(s.runId)));
+  if (s.runId && s.status && s.status !== 'running') {
+    root.append(summaryCard(s.runId));
+    if (((m.requests || {}).errors || 0) > 0) root.append(failuresCard(s.runId));
+  }
 
   if (hasSLAs) {
     root.append(h('div', { class: 'card' }, h('h2', {}, 'SLA results'),

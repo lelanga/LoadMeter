@@ -235,80 +235,52 @@ func TestDiagnoseFindings(t *testing.T) {
 	})
 }
 
-func summaryWith(id string, p50, p95, p99, errRate, rps float64, tx map[string][3]float64) *Summary {
-	s := &Summary{RunID: id}
-	s.Snapshot.Requests = metrics.MetricSet{P50Ms: p50, P95Ms: p95, P99Ms: p99, ErrorRate: errRate, RPS: rps}
-	for n, v := range tx {
-		s.Snapshot.ByTx = append(s.Snapshot.ByTx, metrics.Named{Name: n, MetricSet: metrics.MetricSet{P50Ms: v[0], P95Ms: v[1], P99Ms: v[2]}})
-	}
-	return s
-}
-
-func TestCompareRegressions(t *testing.T) {
-	find := func(c *Comparison, name, metric string) Delta {
-		for _, d := range c.Deltas {
-			if d.Name == name && d.Metric == metric {
-				return d
-			}
+// TestCompareLegacyShape: the old fixed 10%/5 ms rule is gone (see
+// compare_test.go for the statistical verdicts). Summaries without a
+// timeline or request counts cannot be tested, so every metric is
+// inconclusive and nothing is counted as a regression; the old JSON fields
+// (deltas, changePercent, worse, regressions) keep their shape.
+func TestCompareLegacyShape(t *testing.T) {
+	sw := func(id string, p50, p95, p99, errRate, rps float64, tx map[string][3]float64) *Summary {
+		s := &Summary{RunID: id}
+		s.Snapshot.Requests = metrics.MetricSet{P50Ms: p50, P95Ms: p95, P99Ms: p99, ErrorRate: errRate, RPS: rps}
+		for n, v := range tx {
+			s.Snapshot.ByTx = append(s.Snapshot.ByTx, metrics.Named{Name: n, MetricSet: metrics.MetricSet{P50Ms: v[0], P95Ms: v[1], P99Ms: v[2]}})
 		}
-		t.Fatalf("delta %s/%s not found", name, metric)
-		return Delta{}
+		return s
 	}
-	tests := []struct {
-		name        string
-		base, cur   *Summary
-		regressions int
-		worse       map[string]bool // "name/metric"
-	}{
-		{"identical", summaryWith("b", 10, 100, 200, 0, 50, nil), summaryWith("c", 10, 100, 200, 0, 50, nil), 0, nil},
-		{"p95 +20% and >5ms", summaryWith("b", 10, 100, 200, 0, 50, nil), summaryWith("c", 10, 120, 200, 0, 50, nil), 1, map[string]bool{"ALL/p95Ms": true}},
-		{"p95 +8% not enough", summaryWith("b", 10, 100, 200, 0, 50, nil), summaryWith("c", 10, 108, 200, 0, 50, nil), 0, nil},
-		{"+50% but only 3ms", summaryWith("b", 6, 6, 6, 0, 50, nil), summaryWith("c", 9, 9, 9, 0, 50, nil), 0, nil},
-		{"improvement", summaryWith("b", 50, 500, 900, 0, 50, nil), summaryWith("c", 10, 100, 200, 0, 50, nil), 0, nil},
-		{"error +1pt", summaryWith("b", 10, 100, 200, 1, 50, nil), summaryWith("c", 10, 100, 200, 2, 50, nil), 1, map[string]bool{"ALL/errorRate": true}},
-		{"error +0.5pt", summaryWith("b", 10, 100, 200, 1, 50, nil), summaryWith("c", 10, 100, 200, 1.5, 50, nil), 0, nil},
-		{"rps drop never regression", summaryWith("b", 10, 100, 200, 0, 100, nil), summaryWith("c", 10, 100, 200, 0, 10, nil), 0, nil},
-		{"all three latencies", summaryWith("b", 100, 200, 300, 0, 50, nil), summaryWith("c", 200, 400, 600, 0, 50, nil), 3, nil},
-		{"tx regression", summaryWith("b", 10, 10, 10, 0, 5, map[string][3]float64{"Pay": {10, 100, 100}}),
-			summaryWith("c", 10, 10, 10, 0, 5, map[string][3]float64{"Pay": {10, 300, 100}, "New": {1, 1, 1}}), 1, map[string]bool{"tx:Pay/p95Ms": true}},
+	c := Compare(sw("b", 10, 100, 200, 0, 50, nil), sw("c", 10, 150, 200, 0, 50, nil))
+	if c.BaselineRun != "b" || c.Regressions != 0 || c.Verdict != VerdictInconclusive {
+		t.Errorf("%+v", c)
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			c := Compare(tc.base, tc.cur)
-			if c.Regressions != tc.regressions || c.BaselineRun != "b" {
-				t.Errorf("regressions=%d want %d (%+v)", c.Regressions, tc.regressions, c.Deltas)
-			}
-			for k := range tc.worse {
-				parts := strings.SplitN(k, "/", 2)
-				if !find(c, parts[0], parts[1]).Worse {
-					t.Errorf("%s should be worse", k)
-				}
-			}
-			n := 0
-			for _, d := range c.Deltas {
-				if d.Worse {
-					n++
-				}
-			}
-			if n != c.Regressions {
-				t.Errorf("count mismatch %d vs %d", n, c.Regressions)
-			}
-		})
+	var p95 *Delta
+	for i := range c.Deltas {
+		if c.Deltas[i].Name == "ALL" && c.Deltas[i].Metric == "p95Ms" {
+			p95 = &c.Deltas[i]
+		}
+		if c.Deltas[i].Worse {
+			t.Errorf("no data => never worse: %+v", c.Deltas[i])
+		}
 	}
-	c := Compare(summaryWith("b", 10, 100, 200, 0, 50, nil), summaryWith("c", 10, 150, 200, 0, 50, nil))
-	if d := find(c, "ALL", "p95Ms"); d.Change != 50 || d.Baseline != 100 || d.Current != 150 {
-		t.Errorf("%+v", d)
+	if p95 == nil || p95.Change != 50 || p95.Baseline != 100 || p95.Current != 150 || p95.Verdict != VerdictInconclusive || !strings.Contains(p95.Reason, "usable windows") {
+		t.Errorf("%+v", p95)
 	}
 	// tx only in current is not compared; ALL always present (5 metrics)
-	c = Compare(summaryWith("b", 1, 1, 1, 0, 1, nil), summaryWith("c", 1, 1, 1, 0, 1, map[string][3]float64{"X": {1, 1, 1}}))
+	c = Compare(sw("b", 1, 1, 1, 0, 1, nil), sw("c", 1, 1, 1, 0, 1, map[string][3]float64{"X": {1, 1, 1}}))
 	if len(c.Deltas) != 5 {
 		t.Errorf("deltas=%d", len(c.Deltas))
 	}
 	// zero baseline => no division by zero / NaN
-	c = Compare(summaryWith("b", 0, 0, 0, 0, 0, nil), summaryWith("c", 10, 10, 10, 0, 1, nil))
+	c = Compare(sw("b", 0, 0, 0, 0, 0, nil), sw("c", 10, 10, 10, 0, 1, nil))
 	for _, d := range c.Deltas {
 		if math.IsNaN(d.Change) || math.IsInf(d.Change, 0) {
 			t.Errorf("bad change %+v", d)
+		}
+	}
+	b, _ := json.Marshal(c)
+	for _, k := range []string{`"baselineRun"`, `"deltas"`, `"changePercent"`, `"worse"`, `"regressions"`, `"note"`, `"verdict"`} {
+		if !strings.Contains(string(b), k) {
+			t.Errorf("json lacks %s", k)
 		}
 	}
 }

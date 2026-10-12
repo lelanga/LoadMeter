@@ -146,6 +146,7 @@ type runFlags struct {
 	jsonOut, quiet, yes                   bool
 	set                                   stringList
 	dist                                  distFlags // distributed.go
+	stat                                  statFlags // gates.go
 }
 
 func addRunFlags(fs *flag.FlagSet, f *runFlags) {
@@ -162,6 +163,7 @@ func addRunFlags(fs *flag.FlagSet, f *runFlags) {
 	fs.BoolVar(&f.yes, "yes", false, "confirm high-impact tests against non-loopback hosts")
 	fs.Var(&f.set, "set", "set a scenario variable, e.g. --set baseUrl=http://127.0.0.1:8080 (repeatable)")
 	addDistFlags(fs, &f.dist)
+	addStatFlags(fs, &f.stat)
 }
 
 // applyOverrides applies --set variables and workload flags.
@@ -235,10 +237,13 @@ func runScenario(sc *model.Scenario, baseDir string, f *runFlags) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	a, err := ws.StartRun(ctx, sc, app.RunOptions{BaseDir: baseDir, Policy: pol, Baseline: f.baseline, Logger: logger})
+	bw := newBreachWatch(sc, f.stat)
+	a, err := ws.StartRun(ctx, sc, app.RunOptions{BaseDir: baseDir, Policy: pol, Baseline: f.baseline, Logger: logger,
+		Compare: f.stat.cmp.options("", ""), Finalize: bw.finalizer()})
 	if err != nil {
 		return err
 	}
+	bw.start(a, f.quiet || f.jsonOut)
 	sig := make(chan os.Signal, 2)
 	signal.Notify(sig, os.Interrupt)
 	defer signal.Stop(sig)
@@ -274,7 +279,7 @@ func runScenario(sc *model.Scenario, baseDir string, f *runFlags) error {
 		return enc.Encode(sum)
 	}
 	printSummary(sum, a.Dir)
-	if len(sum.SLAs) > 0 && !sum.SLAPassed {
+	if len(sum.SLAs) > 0 && !sum.SLAPassed || bw.Reason() != "" {
 		return exitCode(3)
 	}
 	return nil
@@ -306,7 +311,7 @@ func printSummary(s *results.Summary, dir string) {
 		fmt.Printf("[%s/%s] %s — %s\n", fi.Kind, fi.Severity, fi.Title, fi.Evidence)
 	}
 	if s.Baseline != nil {
-		fmt.Printf("baseline %s: %d regression(s)\n", s.Baseline.BaselineRun, s.Baseline.Regressions)
+		fmt.Printf("baseline %s: %s, %d regression(s) (details: loadmeter compare %s %s)\n", s.Baseline.BaselineRun, s.Baseline.Verdict, s.Baseline.Regressions, s.Baseline.BaselineRun, s.RunID)
 	}
 	fmt.Printf("\nreport: %s\n", filepath.Join(dir, "report.html"))
 }
@@ -529,11 +534,11 @@ func cmdReport(args []string) error {
 		return err
 	}
 	if *base != "" {
-		b, _, err := loadRun(*ws, *base)
+		b, bdir, err := loadRun(*ws, *base)
 		if err != nil {
 			return err
 		}
-		s.Baseline = results.Compare(b, s)
+		s.Baseline = results.CompareWith(b, s, results.CompareOptions{BaseDir: bdir, CurDir: dir})
 	}
 	desc := ""
 	if sc, err := app.LoadScenario(filepath.Join(dir, "scenario.json")); err == nil {
@@ -555,30 +560,33 @@ func cmdReport(args []string) error {
 func cmdCompare(args []string) error {
 	fs := flag.NewFlagSet("compare", flag.ContinueOnError)
 	ws := fs.String("workspace", defaultWorkspace(), "workspace directory")
+	jsonOut := fs.Bool("json", false, "print the comparison as JSON")
+	var cf compareFlags
+	addCompareFlags(fs, &cf) // gates.go
 	if err := fs.Parse(reorder(fs, args)); err != nil {
 		return err
 	}
 	if fs.NArg() != 2 {
-		return fmt.Errorf("usage: loadmeter compare <baseline-run-id> <run-id>")
+		return fmt.Errorf("usage: loadmeter compare <baseline-run-id> <run-id> [--alpha 0.05 --min-effect-pct 5 --json]")
 	}
-	b, _, err := loadRun(*ws, fs.Arg(0))
+	b, bdir, err := loadRun(*ws, fs.Arg(0))
 	if err != nil {
 		return err
 	}
-	c, _, err := loadRun(*ws, fs.Arg(1))
+	c, cdir, err := loadRun(*ws, fs.Arg(1))
 	if err != nil {
 		return err
 	}
-	cmp := results.Compare(b, c)
-	fmt.Printf("%-30s %-10s %12s %12s %9s\n", "scope", "metric", "baseline", "current", "change")
-	for _, d := range cmp.Deltas {
-		flag := ""
-		if d.Worse {
-			flag = "  REGRESSION"
+	cmp := results.CompareWith(b, c, cf.options(bdir, cdir))
+	if *jsonOut {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(cmp); err != nil {
+			return err
 		}
-		fmt.Printf("%-30s %-10s %12.2f %12.2f %8.1f%%%s\n", trunc(d.Name, 30), d.Metric, d.Baseline, d.Current, d.Change, flag)
+	} else {
+		printComparison(cmp)
 	}
-	fmt.Println(cmp.Note)
 	if cmp.Regressions > 0 {
 		return exitCode(3)
 	}

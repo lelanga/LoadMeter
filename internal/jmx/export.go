@@ -525,7 +525,11 @@ func (ex *exporter) step(st model.Step, loc string) {
 			ex.item("think", name, l, model.Unsupported, "think step without duration")
 			return
 		}
-		ex.item("think", name, l, model.Supported, "Flow Control Action (pause 0) carrying the timer"+dis)
+		if d := st.Think.Distribution; d != nil && d.Type != model.DistUniform {
+			ex.item("think", name, l, model.Partial, "think-time distribution is not exported; min/max are used"+dis)
+		} else {
+			ex.item("think", name, l, model.Supported, "Flow Control Action (pause 0) carrying the timer"+dis)
+		}
 		w.element("TestAction", "TestActionGui", name, en, func() {
 			w.intp("ActionProcessor.action", 1)
 			w.intp("ActionProcessor.target", 0)
@@ -596,7 +600,11 @@ func (ex *exporter) step(st model.Step, loc string) {
 	case model.StepGroup:
 		name := stepName(st, "Simple Controller")
 		l := loc + "/" + name
-		ex.item("group", name, l, model.Supported, "Simple Controller"+dis)
+		if st.Select != "" {
+			ex.item("group", name, l, model.Partial, "weighted selection is not exported (Simple Controller runs every child; use a Random Controller by hand)"+dis)
+		} else {
+			ex.item("group", name, l, model.Supported, "Simple Controller"+dis)
+		}
 		w.element("GenericController", "LogicControllerGui", name, en, func() { ex.commentProp(st) },
 			func() { ex.writeSteps(st.Steps, l) })
 	default:

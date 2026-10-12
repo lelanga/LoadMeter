@@ -1,0 +1,11 @@
+The test "Shop checkout" ran for 2 min 5 s with up to 25 virtual users.
+It made 12,345 requests (about 99 per second) and 3.4% of them failed (420 requests).
+Half of the responses took 45 ms or less; 95% took 211 ms or less, and the slowest took 1,204 ms.
+1 of 2 pass/fail targets (SLAs) were missed: 95th percentile response time for all requests should be below 200 ms (measured 210.5 ms).
+The failures fall into 2 groups. The biggest (80% of failures, first seen 65.4 s into the run) is: the server answered with errors (HTTP 503) on GET /flaky.
+That looks like a problem with the system under test (high confidence). The target (or a gateway in front of it) was unavailable or overloaded (HTTP 503). The script received a response, so it is not a script fault.
+The second biggest (20% of failures) is: the script could not find a value it needed from an earlier response on POST /login; it points to the test script.
+Split by side: 80% of failures point to the system under test, 20% of failures point to the test script.
+Also noted: Errors increased as load increased.
+Compared with the earlier run, 2 measurements got worse. The largest change: ALL failure rate (%) went from 0.5 to 3.4 (580%).
+Overall: there are problems to look at. Next step: Check the target's logs and resource usage around the time this cluster started.
