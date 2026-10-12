@@ -1,8 +1,9 @@
 # Next steps
 
-1. Owner: create an empty GitHub repository and attach it so the code can be pushed (none exists yet).
-2. Add API keys via `loadmeter ai set-key <provider>` (or env vars) and run `loadmeter ai test` to live-verify each provider.
-3. Build and run the Docker image on a machine with Docker.
-4. Run the macOS and Windows binaries once on real machines.
-5. Try your own JMeter and LoadRunner scripts with `loadmeter import-jmx` / `loadmeter import-lr`; send any report items that look wrong.
-6. Then start the 0.2 roadmap items.
+1. Review and merge draft PR #1 (https://github.com/lelanga/LoadMeter/pull/1) into `main`.
+2. Windows: double-click `loadmeter-windows-amd64.exe` (opens the web UI). Report any error text you see.
+3. Add API keys via `loadmeter ai set-key <provider>` and run `loadmeter ai test` to live-verify each provider.
+4. Run `loadmeter mcp install --client <your chatbot app>` and try it from Claude Desktop, Cursor, VS Code or Gemini CLI.
+5. Build and run the Docker image on a machine with Docker; run the macOS binaries once.
+6. Try your own JMeter and LoadRunner scripts with `loadmeter import-jmx` / `loadmeter import-lr`; send any report items that look wrong.
+7. Then start the 0.2 roadmap items (see ROADMAP.md): live-verified AI, WebSocket/gRPC, signed releases, distributed runs from the UI.
