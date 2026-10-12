@@ -70,10 +70,13 @@ func openBrowser(url string) {
 	_ = cmd.Start()
 }
 
+// defaultServeAddr is the UI address used when --addr is not given.
+const defaultServeAddr = "127.0.0.1:7878"
+
 func cmdServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	ws := fs.String("workspace", defaultWorkspace(), "workspace directory")
-	addr := fs.String("addr", "127.0.0.1:7878", "listen address (loopback only)")
+	addr := fs.String("addr", defaultServeAddr, "listen address (loopback only)")
 	open := fs.Bool("open", false, "open the browser")
 	var allow stringList
 	fs.Var(&allow, "allow-host", "allowlist a host for this session (repeatable)")
@@ -94,6 +97,11 @@ func cmdServe(args []string) error {
 	defer svc.Close()
 	srv := server.New(svc)
 	ln, err := net.Listen("tcp", *addr)
+	if err != nil && *addr == defaultServeAddr {
+		// default port taken (often another Load Meter): use any free loopback port
+		fmt.Printf("port %s is busy; using a free port instead\n", defaultServeAddr)
+		ln, err = net.Listen("tcp", "127.0.0.1:0")
+	}
 	if err != nil {
 		return fmt.Errorf("cannot listen on %s: %w (is another Load Meter running? try --addr 127.0.0.1:0)", *addr, err)
 	}
