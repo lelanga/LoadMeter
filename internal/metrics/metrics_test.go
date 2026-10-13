@@ -270,7 +270,7 @@ func TestCollectorRawCSV(t *testing.T) {
 	}
 	// JTL-compatible leading columns keep their order; HTTP timing columns are appended.
 	wantHdr := "timeStamp,elapsed,label,responseCode,responseMessage,threadName,success,failureMessage,bytes,sentBytes,Latency,URL,kind" +
-		",Connect,dnsMs,tlsMs,connReused,retries,bodyBytes"
+		",Connect,dnsMs,tlsMs,connReused,retries,bodyBytes,grpThreads,allThreads"
 	if strings.Join(rows[0], ",") != wantHdr {
 		t.Fatalf("header %v", rows[0])
 	}

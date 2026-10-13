@@ -33,3 +33,8 @@
 - Statistical compare, `gate` (JUnit, exit codes 0/3/4), `suggest-slas`, `--abort-on-breach`, change-point/drift findings.
 - HTTP parity: compression decoding, split timeouts and timings, per-VU connections, HTTP/2, hidden-retry accounting, basic/digest/bearer auth, mTLS, DNS override, proxy (all inside the safety allowlist).
 - Fixes: fractional ramp start, arrival-pool VU leak, per-run `__counter`.
+
+## Unreleased: second wave
+- Control flow: while/foreach/switch/percent/runtime, shuffle/roundRobin groups, throughput, rendezvous, critical, Poisson arrivals, newUserEachIteration; JMX import/export and k6 export mappings.
+- Extractor parity (all matches, templates, sources), assertion parity (not, equals, size, hash, ignoreStatus), ~20 functions, nested variable expansion, comma escaping.
+- Fixes: JMX CSV variableNames export, JTL grpThreads/allThreads and transaction rows, policy maxDuration hard-stops every run.

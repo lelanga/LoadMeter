@@ -3,23 +3,31 @@
 // Syntax: ${name} reads a variable; ${__fn(arg1,arg2)} calls a built-in.
 // Unknown variables are left verbatim (JMeter behaviour) and reported as
 // unresolved so the engine and validators can flag them.
+//
+// Variable values that themselves contain ${...} are expanded again (bounded
+// by MaxDepth), so scenario variables can be chained ("base": "https://${host}").
+// Values stored with SetRaw (extracted from responses, function results) are
+// never re-expanded: text that came from the system under test is data.
+//
+// Function arguments are split on commas at parenthesis depth 0, outside
+// nested ${...}. A backslash escapes the next character for "\,", "\\", "\$",
+// "\(" and "\)"; any other backslash is kept as written (so regex arguments
+// such as "\d" survive).
 package vars
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	mrand "math/rand/v2"
-	"os"
-	"strconv"
 	"strings"
 	"sync/atomic"
-	"time"
 )
 
 // EnvPrefix restricts ${__env(NAME)} to variables starting with this prefix so an
 // imported (untrusted) script cannot read arbitrary secrets from the environment.
 const EnvPrefix = "LOADMETER_"
+
+// MaxDepth bounds recursive expansion of variable values (and __eval nesting).
+const MaxDepth = 8
 
 type Context struct {
 	Vars map[string]string
@@ -31,10 +39,37 @@ type Context struct {
 	// to be a process-wide global that kept counting across runs in `serve`).
 	// When nil, the context lazily uses its own counter.
 	Counter *atomic.Int64
+	// vuCounter backs ${__counter(TRUE)} (one sequence per VU, JMeter "per user").
+	vuCounter int64
+	// raw marks variables whose value must not be re-expanded.
+	raw map[string]bool
 }
 
 func NewContext(vu int, seed uint64) *Context {
 	return &Context{Vars: map[string]string{}, VU: vu, Rand: mrand.New(mrand.NewPCG(seed, uint64(vu)+1))}
+}
+
+// Set stores a variable whose value may contain ${...} references that are
+// expanded when the variable is read.
+func (c *Context) Set(name, v string) {
+	c.Vars[name] = v
+	delete(c.raw, name)
+}
+
+// SetRaw stores a variable whose value is used verbatim (never re-expanded).
+// Use it for values that came from a response.
+func (c *Context) SetRaw(name, v string) {
+	c.Vars[name] = v
+	if c.raw == nil {
+		c.raw = map[string]bool{}
+	}
+	c.raw[name] = true
+}
+
+// Delete removes a variable.
+func (c *Context) Delete(name string) {
+	delete(c.Vars, name)
+	delete(c.raw, name)
 }
 
 // Result of an expansion.
@@ -43,8 +78,17 @@ type Result struct {
 	Unresolved []string // ${name} references with no value
 }
 
+func (r *Result) merge(o Result) {
+	r.Used = append(r.Used, o.Used...)
+	r.Unresolved = append(r.Unresolved, o.Unresolved...)
+}
+
 // Expand substitutes variables and functions in s.
 func (c *Context) Expand(s string) (string, Result) {
+	return c.expand(s, 0)
+}
+
+func (c *Context) expand(s string, depth int) (string, Result) {
 	var res Result
 	if !strings.Contains(s, "${") {
 		return s, res
@@ -64,16 +108,16 @@ func (c *Context) Expand(s string) (string, Result) {
 		}
 		expr := s[i+2 : end]
 		if strings.HasPrefix(expr, "__") {
-			v, nested, err := c.call(expr)
-			res.Used = append(res.Used, nested.Used...)
-			res.Unresolved = append(res.Unresolved, nested.Unresolved...)
+			var nested Result
+			v, err := c.callInto(expr, depth, &nested)
+			res.merge(nested)
 			if err != nil {
 				b.WriteString(s[i : end+1])
 				res.Unresolved = append(res.Unresolved, expr)
 			} else {
 				b.WriteString(v)
 			}
-		} else if v, ok := c.Vars[expr]; ok {
+		} else if v, ok := c.lookup(expr, depth, &res); ok {
 			b.WriteString(v)
 			res.Used = append(res.Used, expr)
 		} else {
@@ -85,12 +129,31 @@ func (c *Context) Expand(s string) (string, Result) {
 	return b.String(), res
 }
 
+// lookup returns a variable's value, expanding ${...} inside it unless the
+// variable is raw or the depth bound is reached.
+func (c *Context) lookup(name string, depth int, res *Result) (string, bool) {
+	v, ok := c.Vars[name]
+	if !ok {
+		return "", false
+	}
+	if depth+1 < MaxDepth && !c.raw[name] && strings.Contains(v, "${") {
+		out, r := c.expand(v, depth+1)
+		res.merge(r)
+		return out, true
+	}
+	return v, true
+}
+
 // matchBrace finds the closing } for an expression starting at i, honouring
-// nested ${...} inside function arguments.
+// nested ${...} inside function arguments and backslash escapes.
 func matchBrace(s string, i int) int {
 	depth := 1
 	for j := i; j < len(s); j++ {
 		switch s[j] {
+		case '\\':
+			if j+1 < len(s) && (s[j+1] == '}' || s[j+1] == '{') {
+				j++
+			}
 		case '{':
 			depth++
 		case '}':
@@ -103,117 +166,93 @@ func matchBrace(s string, i int) int {
 	return -1
 }
 
-func (c *Context) call(expr string) (string, Result, error) {
-	var nested Result
-	v, err := c.callInto(expr, &nested)
-	return v, nested, err
-}
-
-func (c *Context) callInto(expr string, nested *Result) (string, error) {
-	name, argStr := expr, ""
-	if p := strings.IndexByte(expr, '('); p >= 0 {
-		if !strings.HasSuffix(expr, ")") {
-			return "", fmt.Errorf("malformed function %q", expr)
-		}
-		name, argStr = expr[:p], expr[p+1:len(expr)-1]
-	}
-	var args []string
-	if argStr != "" {
-		for _, a := range strings.Split(argStr, ",") {
-			v, r := c.Expand(strings.TrimSpace(a))
-			nested.Used = append(nested.Used, r.Used...)
-			nested.Unresolved = append(nested.Unresolved, r.Unresolved...)
-			args = append(args, v)
-		}
-	}
-	switch name {
-	case "__uuid":
-		var u [16]byte
-		_, _ = rand.Read(u[:])
-		u[6] = (u[6] & 0x0f) | 0x40
-		u[8] = (u[8] & 0x3f) | 0x80
-		h := hex.EncodeToString(u[:])
-		return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:], nil
-	case "__randomInt":
-		if len(args) != 2 {
-			return "", fmt.Errorf("__randomInt(min,max) needs 2 args")
-		}
-		lo, err1 := strconv.Atoi(args[0])
-		hi, err2 := strconv.Atoi(args[1])
-		if err1 != nil || err2 != nil || hi < lo {
-			return "", fmt.Errorf("__randomInt: invalid range")
-		}
-		return strconv.Itoa(lo + c.Rand.IntN(hi-lo+1)), nil
-	case "__randomString":
-		n := 8
-		if len(args) > 0 {
-			if v, err := strconv.Atoi(args[0]); err == nil && v > 0 && v <= 4096 {
-				n = v
-			}
-		}
-		const al = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-		b := make([]byte, n)
-		for i := range b {
-			b[i] = al[c.Rand.IntN(len(al))]
-		}
-		return string(b), nil
-	case "__timestamp":
-		if len(args) > 0 && args[0] != "" {
-			return time.Now().Format(goLayout(args[0])), nil
-		}
-		return strconv.FormatInt(time.Now().UnixMilli(), 10), nil
-	case "__counter":
-		if c.Counter == nil {
-			c.Counter = new(atomic.Int64)
-		}
-		return strconv.FormatInt(c.Counter.Add(1), 10), nil
-	case "__vu":
-		return strconv.Itoa(c.VU), nil
-	case "__iteration":
-		return strconv.Itoa(c.Iter), nil
-	case "__env":
-		if len(args) < 1 || !strings.HasPrefix(args[0], EnvPrefix) {
-			return "", fmt.Errorf("__env only reads %s* variables", EnvPrefix)
-		}
-		v, ok := os.LookupEnv(args[0])
-		if !ok && len(args) > 1 {
-			return args[1], nil
-		}
-		return v, nil
-	case "__urlencode":
-		if len(args) < 1 {
-			return "", fmt.Errorf("__urlencode needs 1 arg")
-		}
-		return urlEncode(strings.Join(args, ",")), nil
-	}
-	return "", fmt.Errorf("unknown function %s", name)
-}
-
-// goLayout converts a small subset of Java SimpleDateFormat to Go layout.
-func goLayout(f string) string {
-	r := strings.NewReplacer("yyyy", "2006", "MM", "01", "dd", "02", "HH", "15", "mm", "04", "ss", "05", "SSS", "000")
-	return r.Replace(f)
-}
-
-func urlEncode(s string) string {
-	const hexd = "0123456789ABCDEF"
-	var b strings.Builder
+// splitArgs splits a raw argument list on commas at parenthesis depth 0,
+// outside nested ${...}, keeping escapes for unescapeArg.
+func splitArgs(s string) []string {
+	var out []string
+	var cur strings.Builder
+	paren := 0
 	for i := 0; i < len(s); i++ {
 		ch := s[i]
-		if ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' || ch == '-' || ch == '_' || ch == '.' || ch == '~' {
-			b.WriteByte(ch)
-		} else {
-			b.WriteByte('%')
-			b.WriteByte(hexd[ch>>4])
-			b.WriteByte(hexd[ch&15])
+		switch {
+		case ch == '\\' && i+1 < len(s):
+			cur.WriteByte(ch)
+			cur.WriteByte(s[i+1])
+			i++
+			continue
+		case ch == '$' && i+1 < len(s) && s[i+1] == '{':
+			if end := matchBrace(s, i+2); end >= 0 {
+				cur.WriteString(s[i : end+1])
+				i = end
+				continue
+			}
+		case ch == '(':
+			paren++
+		case ch == ')':
+			if paren > 0 {
+				paren--
+			}
+		case ch == ',' && paren == 0:
+			out = append(out, cur.String())
+			cur.Reset()
+			continue
 		}
+		cur.WriteByte(ch)
+	}
+	return append(out, cur.String())
+}
+
+// dollar stands in for an escaped "\$" while the argument is expanded.
+const dollar = ""
+
+// unescapeArg resolves \, \\ \( \) and turns \$ into a placeholder that
+// expansion leaves alone; other backslashes are kept.
+func unescapeArg(s string) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			switch s[i+1] {
+			case ',', '\\', '(', ')', '{', '}':
+				b.WriteByte(s[i+1])
+				i++
+				continue
+			case '$':
+				b.WriteString(dollar)
+				i++
+				continue
+			}
+		}
+		b.WriteByte(s[i])
 	}
 	return b.String()
 }
 
-// Functions lists built-ins for docs/UI.
-var Functions = []string{"__uuid()", "__randomInt(min,max)", "__randomString(n)", "__timestamp([format])",
-	"__counter()", "__vu()", "__iteration()", "__env(LOADMETER_NAME[,default])", "__urlencode(value)"}
+func (c *Context) callInto(expr string, depth int, nested *Result) (string, error) {
+	name, argStr := expr, ""
+	hasParens := false
+	if p := strings.IndexByte(expr, '('); p >= 0 {
+		if !strings.HasSuffix(expr, ")") {
+			return "", fmt.Errorf("malformed function %q", expr)
+		}
+		name, argStr, hasParens = expr[:p], expr[p+1:len(expr)-1], true
+	}
+	var args []string
+	if hasParens && argStr != "" {
+		for _, a := range splitArgs(argStr) {
+			v, r := c.expand(unescapeArg(strings.TrimSpace(a)), depth)
+			nested.merge(r)
+			args = append(args, strings.ReplaceAll(v, dollar, "$"))
+		}
+	}
+	f, ok := registry[name]
+	if !ok {
+		return "", fmt.Errorf("unknown function %s", name)
+	}
+	return f(&call{c: c, args: args, depth: depth, res: nested})
+}
 
 // EvalCondition evaluates `a == b`, `a != b`, or a single operand (true when
 // non-empty and not "false"/"0") after expansion.

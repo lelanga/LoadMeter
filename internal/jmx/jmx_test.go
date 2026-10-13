@@ -189,7 +189,10 @@ func TestImportLoginFlow(t *testing.T) {
 		t.Errorf("loop = %+v", lp)
 	}
 	// Unconvertible controllers keep their children in disabled groups.
-	for _, name := range []string{"Long token", "Paginate", "Admins"} {
+	if w := findStep(sc.Steps, "Paginate"); w == nil || w.Type != model.StepWhile || w.Cond != "${more} == true" || len(w.Steps) == 0 {
+		t.Errorf("Paginate: expected a while step, got %+v", w)
+	}
+	for _, name := range []string{"Long token", "Admins"} {
 		g := findStep(sc.Steps, name)
 		if g == nil || g.Type != model.StepGroup || !g.Disabled || len(g.Steps) == 0 || g.Comment == "" {
 			t.Errorf("%s: expected disabled group with children, got %+v", name, g)
@@ -269,7 +272,7 @@ func TestUnsupportedElementsReported(t *testing.T) {
 		noteHas     []string
 	}{
 		{"TestPlan/Shoppers/Login/Submit login/Uppercase token", model.Unsupported, []string{"groovy", "toUpperCase", "never executed"}},
-		{"TestPlan/Shoppers/Paginate", model.Unsupported, []string{"While Controller", "${more}"}},
+		{"TestPlan/Shoppers/Paginate", model.Partial, []string{"${more} == true", "capped at"}},
 		{"TestPlan/Shoppers/Long token", model.Unsupported, []string{"__groovy", "disabled group"}},
 		{"TestPlan/Shoppers/Throughput Shaping Timer", model.Unsupported, []string{"kg.apc.jmeter.timers.VariableThroughputTimer", "JMeter Plugins"}},
 		{"TestPlan/View Results Tree", model.Ignored, []string{"UI/listener element; Load Meter reports replace it"}},
@@ -278,7 +281,7 @@ func TestUnsupportedElementsReported(t *testing.T) {
 		{"TestPlan/Admins", model.Partial, []string{"one load thread group"}},
 		{"TestPlan/setUp Thread Group", model.Partial, []string{"once per VU"}},
 		{"TestPlan/Shoppers/Logout/Gaussian pause", model.Partial, []string{"uniform"}},
-		{"TestPlan/Shoppers/Paginate/Next page", model.Supported, []string{"non-executed container"}},
+		{"TestPlan/Shoppers/Paginate/Next page", model.Supported, nil},
 	}
 	for _, c := range cases {
 		it := findItem(rep, c.loc)
@@ -503,18 +506,18 @@ func TestFunctionMapping(t *testing.T) {
 		{"${__UUID()}", "${__uuid()}", ""},
 		{"${__UUID}", "${__uuid()}", ""},
 		{"${__Random(1,10)}", "${__randomInt(1,10)}", ""},
-		{"${__Random(1,10,r)}", "${__randomInt(1,10)}", model.Partial},
+		{"${__Random(1,10,r)}", "${__randomInt(1,10,r)}", ""},
 		{"${__time()}", "${__timestamp()}", ""},
 		{"${__time(,)}", "${__timestamp()}", ""},
-		{"${__time(yyyy-MM-dd,)}", "${__timestamp(yyyy-MM-dd)}", model.Partial},
+		{"${__time(yyyy-MM-dd,)}", "${__timestamp(yyyy-MM-dd)}", ""},
 		{"${__counter(FALSE,)}", "${__counter()}", ""},
-		{"${__counter(TRUE,c)}", "${__counter()}", model.Partial},
+		{"${__counter(TRUE,c)}", "${__counter(TRUE,c)}", ""},
 		{"${__threadNum}", "${__vu()}", ""},
 		{"${__RandomString(12," + alnum + ",)}", "${__randomString(12)}", ""},
 		{"${__RandomString(5,abc)}", "${__randomString(5)}", model.Partial},
 		{"${__P(host,example.com)}", "${host}", model.Partial},
 		{"${__property(port,,8080)}", "${port}", model.Partial},
-		{"${__intSum(1,2)}", "${__intSum(1,2)}", model.Unsupported},
+		{"${__intSum(1,2)}", "${__intSum(1,2)}", ""},
 		{"a ${user} b ${__threadNum}-${__UUID()}", "a ${user} b ${__vu()}-${__uuid()}", ""},
 		{"${__jexl3(\"${x}\" == \"y\")}", "${__jexl3(\"${x}\" == \"y\")}", model.Unsupported},
 	}
@@ -649,19 +652,24 @@ func TestResponseAssertionMapping(t *testing.T) {
 		want   []model.Assertion
 		status string
 	}{
-		{"equals body", respAssert("Assertion.response_data", 8, "OK."), []model.Assertion{{Type: model.AsRegex, Expr: `^OK\.$`}}, model.Supported},
+		{"equals body", respAssert("Assertion.response_data", 8, "OK."), []model.Assertion{{Type: model.AsEquals, Value: "OK."}}, model.Supported},
 		{"matches", respAssert("Assertion.response_data", 1, "ok.*"), []model.Assertion{{Type: model.AsRegex, Expr: `^(?:ok.*)$`}}, model.Supported},
 		{"contains regex", respAssert("Assertion.response_data", 2, `id=\d+`), []model.Assertion{{Type: model.AsRegex, Expr: `id=\d+`}}, model.Supported},
 		{"substring OR", respAssert("Assertion.response_data", 48, "a.b", "c"), []model.Assertion{{Type: model.AsRegex, Expr: `(?:a\.b|c)`}}, model.Supported},
-		{"not regex", respAssert("Assertion.response_data", 6, `x\d`), nil, model.Unsupported},
+		{"not regex", respAssert("Assertion.response_data", 6, `x\d`), []model.Assertion{{Type: model.AsRegex, Expr: `x\d`, AssertionOptions: model.AssertionOptions{Not: true}}}, model.Supported},
 		{"not literal contains", respAssert("Assertion.response_data", 6, "fail"), []model.Assertion{{Type: model.AsNotContains, Value: "fail"}}, model.Supported},
 		{"not OR", respAssert("Assertion.response_data", 52, "a", "b"), nil, model.Unsupported},
 		{"lookahead", respAssert("Assertion.response_data", 2, "a(?=b)"), nil, model.Unsupported},
 		{"status class", respAssert("Assertion.response_code", 1, `2\d\d`), []model.Assertion{{Type: model.AsStatus, Value: "2xx"}}, model.Supported},
-		{"status AND conflict", respAssert("Assertion.response_code", 8, "200", "201"), nil, model.Unsupported},
-		{"status NOT", respAssert("Assertion.response_code", 12, "500"), nil, model.Unsupported},
+		{"status AND conflict", respAssert("Assertion.response_code", 8, "200", "201"), []model.Assertion{
+			{Type: model.AsEquals, Value: "200", AssertionOptions: model.AssertionOptions{Source: model.SrcStatus}},
+			{Type: model.AsEquals, Value: "201", AssertionOptions: model.AssertionOptions{Source: model.SrcStatus}}}, model.Supported},
+		{"status NOT", respAssert("Assertion.response_code", 12, "500"), []model.Assertion{{Type: model.AsEquals, Value: "500", AssertionOptions: model.AssertionOptions{Source: model.SrcStatus, Not: true}}}, model.Supported},
 		{"header", respAssert("Assertion.response_headers", 16, "Content-Type: application/json"), []model.Assertion{{Type: model.AsHeader, Expr: "Content-Type", Value: "application/json"}}, model.Partial},
-		{"message", respAssert("Assertion.response_message", 16, "OK"), nil, model.Unsupported},
+		{"message", respAssert("Assertion.response_message", 16, "OK"), []model.Assertion{{Type: model.AsContains, Value: "OK", AssertionOptions: model.AssertionOptions{Source: model.SrcMessage}}}, model.Supported},
+		{"url", respAssert("Assertion.sample_label", 2, "/home$"), []model.Assertion{{Type: model.AsRegex, Expr: "/home$", AssertionOptions: model.AssertionOptions{Source: model.SrcURL}}}, model.Supported},
+		{"header regex", respAssert("Assertion.response_headers", 2, `X-Id: \d+`), []model.Assertion{{Type: model.AsRegex, Expr: `X-Id: \d+`, AssertionOptions: model.AssertionOptions{Source: model.SrcHeaders}}}, model.Partial},
+		{"document", respAssert("Assertion.response_data_as_document", 16, "x"), nil, model.Unsupported},
 	}
 	for _, c := range cases {
 		sc, rep := importString(t, plan("A", tg(loops("1"), sampler("s", "", c.xml)), ""))
@@ -706,10 +714,10 @@ func TestSamplerAndScopeDetails(t *testing.T) {
 	if !reflect.DeepEqual(up.Multipart, wantParts) || up.URL != "http://h.example/up" {
 		t.Errorf("multipart request = %+v", up)
 	}
-	if len(up.Extract) != 0 {
-		t.Errorf("header regex should not be mapped: %+v", up.Extract)
+	if len(up.Extract) != 1 || up.Extract[0].Source != model.SrcHeaders || up.Extract[0].Group != 1 {
+		t.Errorf("header regex should map to a regex on headers: %+v", up.Extract)
 	}
-	if it := findItem(rep, "TestPlan/TG/up/hdr"); it == nil || it.Status != model.Unsupported {
+	if it := findItem(rep, "TestPlan/TG/up/hdr"); it == nil || it.Status != model.Partial {
 		t.Errorf("header regex item = %+v", it)
 	}
 	// thread-group-level assertion applies to every sampler in scope, including setup

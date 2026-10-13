@@ -43,6 +43,9 @@ type vuState struct {
 	auth            authCache
 	curExplicitAuth bool     // the request in flight set Authorization itself (redirect hook)
 	cur             *timings // last request's timings (timing extractor/assertion); not the body
+	// Control-flow step state (control.go).
+	ctl vuControl
+	txc txCount // request samples recorded, for transaction rows (checks.go)
 }
 
 func (r *Run) newVU(id int) *vuState {
@@ -88,6 +91,7 @@ func (vu *vuState) runPhase(ctx context.Context, steps []model.Step, phase strin
 // iteration runs the main steps once; returns false when the VU must stop.
 func (vu *vuState) iteration(ctx context.Context) bool {
 	vu.vc.Iter++
+	vu.freshUser() // workload.newUserEachIteration (control.go)
 	for name, f := range vu.r.feeds {
 		if f.ds.Scope == "vu" && vu.vuRows[name] {
 			continue
@@ -133,9 +137,16 @@ func (vu *vuState) execSteps(ctx context.Context, steps []model.Step) (bool, boo
 		if ctx.Err() != nil {
 			return false, true
 		}
+		if sub, abort, handled := vu.execControl(ctx, st); handled { // control.go
+			ok = ok && sub
+			if abort {
+				return false, true
+			}
+			continue
+		}
 		switch st.Type {
 		case model.StepRequest:
-			if !vu.doRequest(ctx, st) {
+			if !vu.ctl.note(vu.doRequest(ctx, st)) {
 				ok = false
 				if vu.onErrorAbort() {
 					return false, true
@@ -143,14 +154,16 @@ func (vu *vuState) execSteps(ctx context.Context, steps []model.Step) (bool, boo
 			}
 		case model.StepTransaction:
 			start := time.Now()
-			think0 := vu.thinkAccum
+			think0, tx0 := vu.thinkAccum, vu.txc
 			sub, abort := vu.execSteps(ctx, st.Steps)
 			if ctx.Err() != nil && IsCancel(ctx.Err()) {
 				return false, true
 			}
 			dur := time.Since(start) - (vu.thinkAccum - think0)
-			vu.r.Col.Add(metrics.Sample{Kind: metrics.KindTransaction, Name: st.Name, Start: start, Latency: dur,
-				OK: sub, ErrKind: map[bool]string{true: "", false: "transaction"}[sub], VU: vu.id, Iteration: vu.vc.Iter})
+			txs := metrics.Sample{Kind: metrics.KindTransaction, Name: st.Name, Start: start, Latency: dur,
+				OK: sub, ErrKind: map[bool]string{true: "", false: "transaction"}[sub], VU: vu.id, Iteration: vu.vc.Iter}
+			vu.txSince(tx0, &txs)
+			vu.r.Col.Add(txs)
 			if !sub {
 				ok = false
 			}
@@ -403,7 +416,7 @@ func (vu *vuState) doRequest(ctx context.Context, st *model.Step) bool {
 	sample := metrics.Sample{Kind: metrics.KindRequest, Name: name, VU: vu.id, Iteration: vu.vc.Iter, Start: time.Now(), BytesOut: sent}
 	if err != nil {
 		sample.ErrKind, sample.ErrMsg = "invalid_request", err.Error()
-		vu.r.Col.Add(sample)
+		vu.record(sample)
 		ex.Error = err.Error()
 		vu.inspect(ex)
 		return false
@@ -430,7 +443,7 @@ func (vu *vuState) doRequest(ctx context.Context, st *model.Step) bool {
 			return false // run cancelled: not a target failure
 		}
 		sample.ErrKind, sample.ErrMsg = xr.errKind, err.Error()
-		vu.r.Col.Add(sample)
+		vu.record(sample)
 		ex.Error = err.Error()
 		vu.inspect(ex)
 		return false
@@ -447,7 +460,7 @@ func (vu *vuState) doRequest(ctx context.Context, st *model.Step) bool {
 			hasStatusAssert = true
 		}
 	}
-	if !hasStatusAssert && resp.StatusCode >= 400 {
+	if !hasStatusAssert && !rq.IgnoreStatus && resp.StatusCode >= 400 {
 		ok = false
 		if resp.StatusCode >= 500 {
 			sample.ErrKind = "http_5xx"
@@ -468,29 +481,10 @@ func (vu *vuState) doRequest(ctx context.Context, st *model.Step) bool {
 		}
 		return jsonDoc, jsonErr
 	}
-	for _, e := range rq.Extract {
-		val, found, xerr := vu.extractOne(e, resp, body, getJSON)
-		if xerr != nil || !found {
-			if e.Default != "" || !e.Required {
-				vu.vc.Vars[e.Name] = e.Default
-			}
-			ex.Missing = append(ex.Missing, e.Name)
-			if e.Required && ok {
-				ok = false
-				sample.ErrKind = "extraction"
-				sample.ErrMsg = fmt.Sprintf("required extraction %q found nothing", e.Name)
-				if xerr != nil {
-					sample.ErrMsg += ": " + xerr.Error()
-				}
-			}
-			continue
-		}
-		vu.vc.Vars[e.Name] = val
-		ex.Extracted[e.Name] = val
-	}
+	vu.runExtract(rq.Extract, resp, body, getJSON, &ex, &sample, &ok) // checks.go
 	// Assertions.
 	for _, a := range rq.Assert {
-		res := vu.assert(a, resp, body, lat, getJSON)
+		res := vu.check(a, resp, body, lat, getJSON, &sample) // checks.go
 		ex.Assertions = append(ex.Assertions, res)
 		if !res.Passed && (ok || sample.ErrKind == "http_4xx" || sample.ErrKind == "http_5xx") {
 			ok = false
@@ -506,7 +500,7 @@ func (vu *vuState) doRequest(ctx context.Context, st *model.Step) bool {
 	if !ok && ex.Error == "" {
 		ex.Error = sample.ErrMsg
 	}
-	vu.r.Col.Add(sample)
+	vu.record(sample)
 	vu.inspect(ex)
 	return ok
 }
@@ -515,66 +509,6 @@ func (vu *vuState) inspect(ex Exchange) {
 	if vu.r.opts.Inspect != nil {
 		vu.r.opts.Inspect(ex)
 	}
-}
-
-func (vu *vuState) extractOne(e model.Extractor, resp *http.Response, body []byte, getJSON func() (any, error)) (string, bool, error) {
-	var matches []string
-	expr, _ := vu.vc.Expand(e.Expr)
-	switch e.Type {
-	case model.ExJSONPath:
-		doc, err := getJSON()
-		if err != nil {
-			return "", false, fmt.Errorf("response is not JSON: %w", err)
-		}
-		vals, err := extract.JSONPath(doc, expr)
-		if err != nil {
-			return "", false, err
-		}
-		for _, v := range vals {
-			matches = append(matches, extract.Stringify(v))
-		}
-	case model.ExRegex:
-		m, err := extract.Regex(string(body), expr, e.Group)
-		if err != nil {
-			return "", false, err
-		}
-		matches = m
-	case model.ExBoundary:
-		matches = extract.Boundary(string(body), e.Left, e.Right)
-	case model.ExXPath:
-		root, err := extract.ParseXML(body)
-		if err != nil {
-			return "", false, fmt.Errorf("response is not XML: %w", err)
-		}
-		m, err := extract.XPath(root, expr)
-		if err != nil {
-			return "", false, err
-		}
-		matches = m
-	case model.ExHeader:
-		matches = resp.Header.Values(expr)
-	case model.ExCookie:
-		for _, c := range resp.Cookies() {
-			if c.Name == expr {
-				matches = append(matches, c.Value)
-			}
-		}
-		if len(matches) == 0 && vu.client.Jar != nil {
-			for _, c := range vu.client.Jar.Cookies(resp.Request.URL) {
-				if c.Name == expr {
-					matches = append(matches, c.Value)
-				}
-			}
-		}
-	case model.ExStatus:
-		matches = []string{strconv.Itoa(resp.StatusCode)}
-	case model.ExTiming:
-		if vu.cur != nil {
-			matches = []string{fmtMs(vu.cur.get(expr))}
-		}
-	}
-	v, ok := extract.Pick(matches, e.Match, vu.vc.Rand.IntN)
-	return v, ok, nil
 }
 
 func (vu *vuState) assert(a model.Assertion, resp *http.Response, body []byte, lat time.Duration, getJSON func() (any, error)) AssertResult {

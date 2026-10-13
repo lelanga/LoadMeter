@@ -460,6 +460,8 @@ func readRawWindows(path string, startMs int64) (map[string]*rawSeries, error) {
 		kind := metrics.KindRequest
 		if hasKind && kindCol < len(rec) && rec[kindCol] != "" {
 			kind = rec[kindCol]
+		} else if mc, ok := col["responseMessage"]; ok && mc < len(rec) && strings.HasPrefix(rec[mc], metrics.TransactionMessagePrefix) {
+			kind = metrics.KindTransaction // JMeter JTL: Transaction Controller row
 		}
 		key := kind + "\x00" + rec[col["label"]]
 		s := out[key]

@@ -118,7 +118,11 @@ Write `${name}` anywhere in a URL, header value, body, form value, extractor exp
 
 Variables come from, in order of use: `variables`, data source columns, extractors, `set` steps.
 
-Functions look like `${__name(arg1,arg2)}`. Arguments may contain `${...}`.
+A variable whose value contains `${...}` is expanded again when it is read, up to 8 levels deep, so variables can build on each other: `"host": "shop.example"`, `"base": "https://${host}/api"`. A cycle stops at the depth limit and stays as written. Values that came from a response (extractors, and the variables written by `__split` and other functions with a result variable) are never re-expanded: text from the system under test is used exactly as received.
+
+Functions look like `${__name(arg1,arg2)}`. Arguments may contain `${...}`. Arguments are split on commas, but not on commas inside parentheses or inside a nested `${...}`. Use `\,` for a literal comma, `\\` for a backslash, `\$` for a literal `$` (so `\${x}` stays as the text `${x}`), and `\(` `\)` for parentheses. Any other backslash is kept, so regular expressions such as `\d+` need no escaping. Leading and trailing spaces of each argument are removed.
+
+Many functions take an optional last argument `var`: the result is also stored in that variable (as JMeter does).
 
 | Function | Result |
 |---|---|
@@ -126,12 +130,37 @@ Functions look like `${__name(arg1,arg2)}`. Arguments may contain `${...}`.
 | `${__randomInt(min,max)}` | Random integer from min to max, inclusive |
 | `${__randomString(n)}` | Random letters and digits. Default length 8, maximum 4096 |
 | `${__timestamp()}` | Unix time in milliseconds |
-| `${__timestamp(yyyy-MM-dd'T'HH:mm:ss)}` | Formatted time. Supports the tokens `yyyy MM dd HH mm ss SSS` |
-| `${__counter()}` | A counter that rises by 1 on every call, shared by all VUs of a run. It starts at 1 for every run |
+| `${__timestamp(/1000)}` | Unix time divided by the number (here: seconds) |
+| `${__timestamp(yyyy-MM-dd'T'HH:mm:ss.SSSXXX)}` | Formatted local time, Java `SimpleDateFormat` syntax (see below). `YMD`, `HMS` and `YMDHMS` are short names for `yyyyMMdd`, `HHmmss` and `yyyyMMdd-HHmmss`. Optional second argument `var` |
+| `${__counter()}` / `${__counter(FALSE)}` | A counter that rises by 1 on every call, shared by all VUs of a run. It starts at 1 for every run |
+| `${__counter(TRUE)}` | A counter per VU (each VU counts 1, 2, 3, ...). Optional second argument `var` |
 | `${__vu()}` | The number of the current VU |
 | `${__iteration()}` | The iteration number of the current VU |
 | `${__env(LOADMETER_NAME)}` / `${__env(LOADMETER_NAME,default)}` | Value of an environment variable. Only names that start with `LOADMETER_` can be read. This stops an imported scenario from reading other secrets |
 | `${__urlencode(value)}` | Percent-encoded value |
+| `${__urldecode(value)}` | Decoded value (`%XX` and `+`) |
+| `${__v(name)}` / `${__v(name,default)}` | The value of the variable whose name is computed, such as `${__v(id_${n})}`. Without a default, a missing variable is unresolved. Also `__V` |
+| `${__eval(text)}` | Expands `text` once more, such as a template stored in a variable |
+| `${__evalVar(name)}` | Expands the value of variable `name` |
+| `${__isVarDefined(name)}` | `true` or `false` |
+| `${__split(text,var[,delims])}` | Splits `text`. Every character of `delims` (default `,`) is a delimiter. Sets `var` (the text), `var_n` (count) and `var_1`..`var_N`; an empty field becomes `?`, a leading delimiter is ignored (JMeter rules). Returns the text |
+| `${__intSum(a,b,...[,var])}` / `${__longSum(...)}` | Sum of the integers. `__intSum` wraps around like a 32-bit Java `int` |
+| `${__changeCase(text[,mode][,var])}` | `UPPER` (default), `LOWER` or `CAPITALIZE` |
+| `${__digest(alg,value[,salt[,upper[,var]]])}` | Hex digest of value followed by salt. `alg`: `MD5`, `SHA-1`, `SHA-224`, `SHA-256`, `SHA-384`, `SHA-512`. `upper` `true` gives upper-case hex |
+| `${__base64Encode(value[,var])}` / `${__base64Decode(value[,var])}` | Standard Base64 |
+| `${__escapeHtml(v)}`, `${__unescapeHtml(v)}`, `${__escapeXml(v)}` | HTML/XML escaping |
+| `${__escapeRegex(v)}` | `v` with regular-expression metacharacters quoted |
+| `${__unescape(v)}` | Resolves `\n`, `\t`, `\r`, `\\`, `\uXXXX` and similar escapes |
+| `${__char(65,0x42)}` | Characters from code points (`AB`) |
+| `${__timeShift(format,date,shift[,locale][,var])}` | `date` (now when empty) moved by `shift`, an ISO-8601 duration such as `P1DT2H` or `-PT30M` (days, hours, minutes, seconds). Empty `format` means epoch milliseconds for input and output |
+| `${__randomDate(format,start,end[,locale][,var])}` | A random day from `start` (today when empty) up to but not including `end`. `format` defaults to `yyyy-MM-dd` |
+| `${__dateTimeConvert(date,sourceFormat,targetFormat[,var])}` | Reformats a date. Empty `sourceFormat` means `date` is epoch milliseconds |
+| `${__randomFromList(a,b,c)}` | One of the arguments at random |
+| `${__randomFromVars(a\|b[,var])}` | One value at random from the variables `a` and `b`. A variable with `name_matchNr` (an extractor with `match: "all"`) contributes `name_1`..`name_N` |
+
+JMeter names `__UUID`, `__threadNum`, `__V`, `__RandomDate`, `__escapeOroRegexpChars` and `__RandomFromMultipleVars` also work.
+
+Date formats use Java `SimpleDateFormat` letters: `y` year (`yy` two digits), `M` month (`MMM` `Jan`, `MMMM` `January`), `d` day, `D` day of year, `E` weekday (`EEE` `Mon`, `EEEE` `Monday`), `u` weekday number, `a` AM/PM, `H` hour 0-23, `k` 1-24, `K` 0-11, `h` 1-12, `m` minute, `s` second, `S` millisecond, `z` zone name, `Z` `+0100`, `X`/`XX`/`XXX` `+01`/`+0100`/`+01:00` (`Z` for UTC), `w` ISO week, `W` week of month, `F`, `G` era. Text in single quotes is literal (`''` is a quote). Names are English; the locale argument is ignored. For parsing (`__timeShift`, `__randomDate`, `__dateTimeConvert` input) the letters `G Y w W F u k K` are not supported, milliseconds must follow `.` or `,`, and literal text must not contain digits or Go layout words such as `Jan`, `Mon`, `PM` or `MST`.
 
 Use `${__env(LOADMETER_API_TOKEN)}` to keep secrets out of the file. See [SECURITY.md](SECURITY.md).
 
@@ -148,12 +177,39 @@ Every step has a `type`. Common fields: `name`, `disabled` (skip this step), `co
 | `if` | `steps`, `condition` | Run the inner steps only when the condition is true |
 | `think` | `think` | Pause. See below |
 | `set` | `set` (array of `{name, value}`) | Set variables. Values are expanded |
+| `while`, `foreach`, `switch`, `percent`, `runtime`, `throughput`, `rendezvous`, `critical` | see [Control flow](#control-flow) | Data-driven loops, mix controllers and cross-VU synchronisation (JMeter logic controllers) |
+
+`group` also accepts `"select": "shuffle"` (every enabled inner step once, in a random order from the run seed; JMeter Random Order Controller) and `"select": "roundRobin"` (one inner step per execution, in rotation; JMeter Interleave Controller). `roundRobin` rotates per VU unless `"shared": true`, which uses one rotation for all VUs.
 
 `condition` forms: `${a} == b`, `${a} != b`, or a single `${a}`. A single value is true when it is not empty, not `false` and not `0`. Quotes around operands are ignored. An unresolved variable in a single-operand condition counts as false.
 
 `think`: `{"min": "200ms", "max": "500ms"}`. With `max` larger than `min`, the pause is random between them. `workload.thinkTimeScale` multiplies all think times (`0` removes them, `1` keeps them).
 
 `think.distribution` replaces the uniform draw with a statistical distribution (parameters in seconds); `min` and `max` then act as clamps (`max` 0 = no upper clamp): `{"min": "300ms", "max": "2m", "distribution": {"type": "lognormal", "mu": 2.3, "sigma": 1.1}}`. Types: `lognormal` (`mu`, `sigma` of ln seconds), `exponential` (`mean`), `gamma` (`shape`, `scale`), `uniform` (uses `min`/`max`). Sampling uses the run seed, so runs are reproducible. Exports to k6 and JMeter keep only `min`/`max` and say so in their report.
+
+### Control flow
+
+These steps put their parameters directly on the step object. Every repeating step is bounded: it stops after `maxIterations` passes (default 10 000 for `while` and `foreach`, 1 000 000 for `runtime`, never more than 1 000 000) even if its condition still holds, logs a warning the first time a cap is hit, and stops at once when the run is cancelled. A graceful stop (the end of `duration`, or a first Stop) ends a loop after the current pass in the main and setup steps; teardown loops still run under the teardown time limit.
+
+| `type` | Fields | Meaning |
+|---|---|---|
+| `while` | `steps`, `condition`, optional `maxIterations`, `duration` | Repeat while `condition` holds; checked before every pass. An **unresolved variable makes the condition false**, so a typo ends the loop (JMeter would loop forever). Empty `condition`: run until a pass whose last request failed (the first pass always runs). `"LAST"`: the same, but also skip the loop when the request before it failed. `duration` caps the loop's wall-clock time |
+| `foreach` | `steps`, `input`, `var`, optional `start`, `end`, `noSeparator`, `maxIterations` | For i = `start`+1, `start`+2, ... set `var` to the variable `input_i` (`inputi` with `noSeparator`) and run the steps; stop at the first missing variable or after index `end` (inclusive; 0 = no end). Pairs with extractors that write `name_1..name_N` |
+| `switch` | `steps`, `value` | Expand `value` and run one enabled inner step: empty = the first; digits = that 0-based index among the enabled steps (out of range = the first); otherwise the step whose `name` equals the value, else the step named `default` (any case), else nothing. These are JMeter's rules |
+| `percent` | `steps`, `percent` (0-100] **or** `executions`, optional `shared` | Run the steps on a share of the passes. Deterministic JMeter Throughput Controller rule: pass k (0-based) runs when `(100*runs + 50) / (k + 1) < percent`, so 25 runs on passes 2, 6, 10, ... `executions: N` runs only the first N passes. Counters are per VU unless `shared: true` |
+| `runtime` | `steps`, `duration`, optional `maxIterations` | Repeat the steps until `duration` has elapsed, checking the clock between inner steps (one inner step may overrun, as in JMeter) |
+| `throughput` | `perMinute`, optional `scope`, `key`; no `steps` | Pause so that the passes through this step do not exceed `perMinute` (JMeter Constant Throughput Timer). `scope`: `vu` (default, each VU at `perMinute`), `active` (each VU at `perMinute` / active VUs, i.e. the total), `shared` (one schedule for all VUs: slot = max(now, last slot + interval)). It only slows VUs down: a VU that is late does not catch up (the deficit is lost). The pause counts as think time |
+| `rendezvous` | optional `group`, `timeout`, `key`; no `steps` | Wait until `group` VUs have arrived (0 = the number of VUs active at each arrival), then release them together for a spike (JMeter Synchronizing Timer). `timeout` (default 30 s, at most 1 h) releases a partial group. The wait counts as think time |
+| `critical` | `steps`, optional `key` | Run the steps while holding a run-wide lock named `key` (default: the step name, else `global_lock`); other VUs reaching a step with the same key wait (JMeter Critical Section Controller). The wait is included in transaction time |
+
+`key` also lets several `throughput`, `rendezvous` or shared `percent`/`roundRobin` steps of the same type share one schedule, barrier or counter (the JMX importer uses the timer's location so a timer applied before many samplers stays one timer). Without a key each step has its own state.
+
+```json
+{"type": "while", "name": "poll job", "condition": "${status} != done", "maxIterations": 60, "steps": [
+  {"type": "request", "name": "status", "request": {"method": "GET", "url": "/jobs/${job}",
+    "extract": [{"name": "status", "type": "jsonpath", "expr": "$.status"}]}},
+  {"type": "think", "think": {"min": "1s"}}]}
+```
 
 ### Request
 
@@ -170,6 +226,7 @@ Every step has a `type`. Common fields: `name`, `disabled` (skip this step), `co
 | `followRedirects` | boolean | Overrides the default |
 | `extract` | array of extractors | Save values from the response |
 | `assert` | array of assertions | Check the response |
+| `ignoreStatus` | boolean | A status of 400 or more no longer fails the request by itself (JMeter "Ignore Status"). Assertions still apply |
 
 Only one body form is used. The order is `multipart`, then `form`, then `body`. Load Meter sets `Content-Type` for `form` and `multipart` if you did not. It sends `User-Agent: Load Meter-Performance/0.1` if you did not set one.
 
@@ -186,9 +243,16 @@ An extractor saves part of a response into a variable for later steps. This is h
 | `expr` | The expression. Meaning depends on `type` |
 | `left`, `right` | For `boundary`: the text before and after the value |
 | `group` | For `regex`: capture group number |
-| `match` | Which match to keep: `0` or `1` = first, `n` = nth (1-based), `-1` = random |
+| `template` | For `regex`: builds the value from groups, such as `"$1$-$2$"` (`$0$` is the whole match). Replaces `group` |
+| `source` | For `regex` and `boundary`: what to read. `body` (default), `headers` (the status line, then one `Name: value` line per response header, sorted, with Go's canonical name casing such as `X-Csrf-Token`), `requestHeaders` (`Host` first, then the request headers as set by the scenario), `url` (the final URL after redirects), `status` (`200`) or `message` (`OK`) |
+| `match` | Which match to keep: `0` or `1` = first, `n` = nth (1-based), `-1` (or `"random"`) = random, `"all"` = every match (see below) |
+| `maxMatches` | With `"all"`: keep at most this many matches (default 1000) |
 | `default` | Value to use when nothing is found |
 | `required` | When true, the iteration is marked failed if nothing is extracted |
+
+Match numbers differ from JMeter, where `0` means random and `-1` means all. The JMX importer and exporter translate them.
+
+With `"match": "all"`, an extractor named `id` writes `id_1` .. `id_N`, `id_matchNr` (the count, `0` when nothing matched), `id_ALL` (all values joined with `,`) and `id` (the first value, or the default when nothing matched). Variables left over from an earlier, longer extraction (`id_4` when there are now 3 matches) are removed. A `regex` extractor also writes its capture groups: `id_g` (number of groups) and `id_g0` .. `id_gN` for a single match, `id_1_g1` and so on with `"all"`, as JMeter does. Extracted values are stored as received and are never expanded again.
 
 | `type` | `expr` is | Notes |
 |---|---|---|
@@ -197,7 +261,7 @@ An extractor saves part of a response into a variable for later steps. This is h
 | `xpath` | An XPath | Supports `/a/b`, `//b`, `a/b[2]`, a trailing `/text()` and `/@attr`. XML with a DOCTYPE is rejected |
 | `header` | A response header name | |
 | `cookie` | A cookie name | Looks at `Set-Cookie`, then at the cookie jar |
-| `boundary` | not used (use `left` and `right`) | Text between two markers |
+| `boundary` | not used (use `left` and `right`) | Text between two markers. `left` and `right` may contain variables |
 | `status` | not used | The HTTP status code as text |
 | `timing` | `total`, `ttfb`, `connect`, `dns` or `tls` | That time for this request in milliseconds, such as `12.345`. `connect` is `0` on a reused connection |
 
@@ -214,6 +278,22 @@ An assertion fails the request when it is not true.
 | `jsonpath` | `expr`, optional `value` | The path exists. With `value`, one of the matches equals it |
 | `max_latency` | `value` (duration), optional `expr` | The response time is at most the value. `expr` picks another time: `ttfb`, `connect`, `dns`, `tls` (default `total`) |
 | `header` | `expr` (header name), optional `value` | The header is present. With `value`, the header contains it |
+| `equals` | `value` | The body (or `source`) is exactly the value |
+| `size` | `value` (bytes), optional `op`, optional `expr` | The size compared with `op` (`==` default, `!=`, `<`, `<=`, `>`, `>=`) is true. `expr`: `body` (default; decoded body size) or `full` (bytes on the wire: headers plus the body as received) |
+| `hash` | `value` (hex digest), optional `expr` | The digest of the body equals the value (case does not matter). `expr`: `md5` (default), `sha1`, `sha256`, `sha512`. Only the kept body (up to `defaults.maxBodyBytes`) is hashed |
+
+Options for every assertion:
+
+| Field | Meaning |
+|---|---|
+| `not` | Inverts the result: the assertion passes when the check fails (JMeter "Not" / "Invert") |
+| `message` | Failure message to report instead of the generated one. Variables are expanded |
+| `source` | For `contains`, `not_contains`, `regex` and `equals`: what to check, with the same values as the extractor `source` (`body`, `headers`, `requestHeaders`, `url`, `status`, `message`) |
+| `op` | For `size` only |
+| `regex` | For `jsonpath`: `value` is a regular expression that must match the whole value (an empty value then means "the value is empty") |
+| `expectNull` | For `jsonpath`: the path must exist and be JSON `null` |
+
+Without a `status` assertion, a response with status 400 or more fails the request (`http_4xx`/`http_5xx`). A `status` assertion, or `ignoreStatus` on the request, replaces that rule.
 
 ## Data sources
 
@@ -258,6 +338,8 @@ Other workload fields:
 | `gracefulStop` | How long in-flight iterations may finish after the test ends (default 5 s) |
 | `thinkTimeScale` | Multiplier for think times. `0` ignores them, `1` keeps them |
 | `onError` | `continue` (default), `abort-iteration`, `stop-vu` |
+| `arrivals` | Arrival-rate executors only: `even` (default, fixed spacing 1/rate) or `poisson` (exponential gaps with mean 1/rate from the run seed, so the run is reproducible; the rate may vary with `stages`) |
+| `newUserEachIteration` | `true`: each iteration after the first starts with an empty cookie jar, no cached digest challenge and, in `per-vu` connection mode, new connections (JMeter "same user on each iteration" off). Variables are kept. With `connections: shared` the connections are not reset |
 
 If the open model cannot start an iteration because all `maxVUs` are busy, the iteration is counted as **dropped**. That means the system or the VU pool could not keep up with the rate.
 

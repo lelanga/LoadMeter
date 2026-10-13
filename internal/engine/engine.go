@@ -95,6 +95,7 @@ type Run struct {
 	active    atomic.Int64
 	vuSeq     atomic.Int64
 	itersLeft atomic.Int64
+	ctl       runControl // control-flow step state (control.go)
 
 	stopIters chan struct{} // closed: no new iterations
 	stopOnce  sync.Once
@@ -189,6 +190,7 @@ func (r *Run) Start(ctx context.Context) {
 	r.StartedAt = time.Now()
 	r.hardCtx, r.hardStop = context.WithCancel(ctx)
 	r.Col = metrics.NewCollector(r.StartedAt, r.opts.Raw)
+	r.Col.SetThreads(func() int { return int(r.active.Load()) }) // JTL grpThreads/allThreads
 	if r.opts.OnCollector != nil {
 		r.opts.OnCollector(r.Col)
 	}
@@ -249,6 +251,7 @@ func (r *Run) durationTimer(d time.Duration) {
 
 func (r *Run) execute() {
 	w := r.sc.Workload
+	r.maxDurationGuard() // control.go: hard stop at the policy maximum
 	switch w.Executor {
 	case model.ExecConstantVUs:
 		r.durationTimer(w.Duration.D())
@@ -390,7 +393,7 @@ func (r *Run) runArrival(rate func(time.Duration) float64) {
 		if rt <= 0 {
 			next = time.Now().Add(10 * time.Millisecond)
 		} else {
-			next = next.Add(time.Duration(float64(time.Second) / rt))
+			next = next.Add(r.arrivalGap(rt)) // even or poisson (control.go)
 		}
 		if d := time.Until(next); d > 0 {
 			select {

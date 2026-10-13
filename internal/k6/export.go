@@ -39,6 +39,7 @@ type exporter struct {
 	abort    bool
 	scale    float64
 	usesExec bool
+	ctl      k6Control // control-flow helpers (control.go)
 }
 
 func js(v any) string {
@@ -164,6 +165,7 @@ func Export(s *model.Scenario, o Options) ([]byte, *model.CompatReport, error) {
 	out.WriteString("\n")
 	out.WriteString(runtimeJS)
 	out.WriteString("\n")
+	out.WriteString(e.ctl.helpers())
 	out.WriteString(body)
 
 	e.rep.Warnings = append(e.rep.Warnings, "k6 runs the generated script against the configured baseUrl; Load Meter's host allowlist does not apply to k6. Only run it against systems you are authorized to test.")

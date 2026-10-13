@@ -480,3 +480,18 @@ Diagnose now reports p95/error-rate level shifts (PELT) with before/after levels
 - **Timing breakdown.** Raw samples include connect, DNS, TLS and connection reuse. `responseHeaderTimeout` fails slow first bytes (`ttfb_timeout`); `{"type":"max_latency","expr":"ttfb","value":"500ms"}` asserts on TTFB.
 - **Hidden retries.** Go may silently resend a GET on a closed keep-alive connection. They are counted (`retries` column). `hiddenRetries: "fail"` reports them as failures, like JMeter.
 - **Auth, certificates, proxies.** `defaults.auth` (basic, digest, bearer) with secrets only as `${secret_*}` or `${__env(...)}`; client certs in `defaults.tls`; static hosts in `defaults.dns.hosts`; proxy in `defaults.proxy`. The allowlist checks host names, DNS-override IPs, the proxy and every target behind it.
+
+## Loops, mixes and synchronisation (JMeter logic controllers)
+- **Loops of unknown length.** `while` repeats while a condition holds (`"condition": "${status} != done"`); an empty condition repeats until a pass's last request fails. `foreach` walks `ids_1, ids_2, ...` into a variable. `runtime` repeats steps for a fixed time. Every loop stops after `maxIterations` passes (10 000 default) and at test end; an undefined variable in a condition is false, so a typo cannot hang a run.
+- **Traffic mixes.** `switch` runs one step chosen by a value. `percent` runs steps on an exact share of passes. Groups can `select` `weighted`, `shuffle` or `roundRobin` (`"shared": true` rotates across all users).
+- **Throughput cap in a closed test.** `throughput` step (`"perMinute": 120, "scope": "shared"`) slows users to a rate, never speeds them up. For a guaranteed rate use an arrival-rate executor, optionally `"arrivals": "poisson"`.
+- **Spikes and ordering.** `rendezvous` holds users until `group` arrive (or `timeout`, default 30 s). `critical` lets one user at a time run its steps for a `key`.
+- **Fresh users.** `workload.newUserEachIteration: true` gives every iteration a new cookie jar (and new connections with per-user connections).
+- JMeter While, ForEach, Switch, Throughput, Interleave, Random, Random Order, Runtime and Critical Section controllers, plus Constant Throughput and Synchronizing timers, import to these steps and export back; the compatibility report lists differences.
+
+## Extractors, assertions and functions (JMeter parity)
+- **Every match.** `"match": "all"` on extractor `id` gives `id_1..id_N`, `id_matchNr`, `id_ALL` and `id` (first); feed it to `foreach`. Regex extractors also set capture groups (`id_g1`, `id_2_g1`). Load Meter: `0`/`1` = first, `-1` = random; JMeter's `0` = random and `-1` = all are translated on import/export.
+- **Templates and sources.** `"template": "$1$-$2$"`; `"source"` reads `headers`, `requestHeaders`, `url`, `status` or `message` (regex and boundary).
+- **Assertions.** Any assertion takes `"not": true` and `"message"`. New: `equals`, `size`, `hash` (md5/sha1/sha256/sha512); `jsonpath` accepts `"regex"` and `"expectNull"`; `"ignoreStatus": true` on a request.
+- **Variables and functions.** Variables can reference each other (up to 8 levels); response-extracted values are never re-expanded. Escape commas in function args with `\,`. ~20 more JMeter functions, SimpleDateFormat patterns, `__counter(TRUE)` per user. See SCENARIO_FORMAT.md.
+- **JMeter results.** `raw.csv` has `grpThreads`/`allThreads` and marks transaction rows JMeter-style.

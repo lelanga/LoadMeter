@@ -330,7 +330,7 @@ func regexExtractor(body, v string) (model.Extractor, bool) {
 				if i > 0 {
 					match = i + 1
 				}
-				return model.Extractor{Type: model.ExRegex, Expr: expr, Group: 1, Match: match}, true
+				return model.Extractor{Type: model.ExRegex, Expr: expr, Group: 1, Match: model.MatchIndex(match)}, true
 			}
 		}
 	}
@@ -548,7 +548,7 @@ func verifyExtractor(ex Exchange, e model.Extractor, want string) bool {
 		if err != nil {
 			return false
 		}
-		v, ok := extract.Pick(ms, e.Match, func(int) int { return 0 })
+		v, ok := extract.Pick(ms, int(e.Match), func(int) int { return 0 })
 		return ok && v == want
 	case model.ExHeader:
 		return model.HeaderValue(ex.RespHeaders, e.Expr) == want

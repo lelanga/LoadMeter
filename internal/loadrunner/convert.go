@@ -1090,7 +1090,7 @@ func (im *importer) applyOrdinal(ex *model.Extractor, v string, notes *[]string,
 		*status = model.Partial
 		*notes = append(*notes, "Ord=ALL: only the first match is saved (as "+ex.Name+"); the _N array and _count are not produced")
 	default:
-		ex.Match = m
+		ex.Match = model.MatchIndex(m)
 	}
 }
 

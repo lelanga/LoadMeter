@@ -144,29 +144,28 @@ func importFuncs(s string, vars map[string]string) (string, []fnIssue) {
 				return raw
 			}
 			if arg(2) != "" {
-				add(r.name, model.Partial, "%s: result variable %q is not stored by Load Meter __randomInt", raw, arg(2))
+				return "${__randomInt(" + arg(0) + "," + arg(1) + "," + arg(2) + ")}"
 			}
 			return "${__randomInt(" + arg(0) + "," + arg(1) + ")}"
 		case "__time":
-			out := "${__timestamp()}"
-			if f := arg(0); f != "" {
-				if strings.HasPrefix(f, "/") {
-					add(r.name, model.Unsupported, "%s: divisor form has no Load Meter equivalent; left as text", raw)
-					return raw
-				}
-				out = "${__timestamp(" + f + ")}"
-				add(r.name, model.Partial, "%s: Load Meter __timestamp(format) understands only a SimpleDateFormat subset (yyyy MM dd HH mm ss SSS)", raw)
+			// Formats (SimpleDateFormat, YMD/HMS/YMDHMS names, /divisor) and the
+			// result variable map one to one onto __timestamp.
+			switch {
+			case arg(1) != "":
+				return "${__timestamp(" + strings.TrimSpace(r.args[0]) + "," + arg(1) + ")}"
+			case arg(0) != "":
+				return "${__timestamp(" + strings.TrimSpace(r.args[0]) + ")}"
 			}
-			if arg(1) != "" {
-				add(r.name, model.Partial, "%s: result variable %q is not stored", raw, arg(1))
-			}
-			return out
+			return "${__timestamp()}"
 		case "__counter":
-			if !strings.EqualFold(arg(0), "FALSE") {
-				add(r.name, model.Partial, "%s: JMeter per-thread counter (TRUE) mapped to Load Meter __counter(), which is global across VUs", raw)
-			}
-			if arg(1) != "" {
-				add(r.name, model.Partial, "%s: result variable %q is not stored", raw, arg(1))
+			perVU := !strings.EqualFold(arg(0), "FALSE")
+			switch {
+			case perVU && arg(1) != "":
+				return "${__counter(TRUE," + arg(1) + ")}"
+			case perVU:
+				return "${__counter(TRUE)}"
+			case arg(1) != "":
+				return "${__counter(FALSE," + arg(1) + ")}"
 			}
 			return "${__counter()}"
 		case "__threadNum":
@@ -202,6 +201,9 @@ func importFuncs(s string, vars map[string]string) (string, []fnIssue) {
 			add(r.name, model.Partial, "%s: JMeter property mapped to scenario variable ${%s} (default %q); set it in Load Meter variables instead of -J%s", raw, name, def, name)
 			return "${" + name + "}"
 		}
+		if out, ok := importPassthrough(r, raw, vars, add); ok { // funcmap.go
+			return out
+		}
 		add(r.name, model.Unsupported, "JMeter function %s has no Load Meter equivalent; left as text (will not resolve at runtime)", raw)
 		return raw
 	})
@@ -225,14 +227,21 @@ func exportFuncs(s string) (string, []fnIssue) {
 		case "__uuid":
 			return "${__UUID()}"
 		case "__randomInt":
+			if arg(2) != "" {
+				return "${__Random(" + arg(0) + "," + arg(1) + "," + arg(2) + ")}"
+			}
 			return "${__Random(" + arg(0) + "," + arg(1) + ")}"
 		case "__timestamp":
-			if f := arg(0); f != "" {
-				return "${__time(" + f + ",)}"
+			if len(r.args) > 0 && (arg(0) != "" || arg(1) != "") {
+				return "${__time(" + strings.TrimSpace(r.args[0]) + "," + arg(1) + ")}"
 			}
 			return "${__time()}"
 		case "__counter":
-			return "${__counter(FALSE,)}"
+			mode := "FALSE"
+			if strings.EqualFold(arg(0), "TRUE") {
+				mode = "TRUE"
+			}
+			return "${__counter(" + mode + "," + arg(1) + ")}"
 		case "__vu":
 			return "${__threadNum}"
 		case "__randomString":
@@ -243,6 +252,9 @@ func exportFuncs(s string) (string, []fnIssue) {
 			return "${__RandomString(" + n + "," + alnum + ",)}"
 		case "__urlencode":
 			return "${__urlencode(" + strings.Join(r.args, ",") + ")}"
+		}
+		if out, ok := exportPassthrough(r, &issues); ok { // funcmap.go
+			return out
 		}
 		issues = append(issues, fnIssue{Fn: r.name, Status: model.Partial,
 			Note: fmt.Sprintf("Load Meter function %s has no JMeter mapping; left as text", raw)})

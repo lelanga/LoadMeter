@@ -85,7 +85,7 @@ time of writing, and that package is still changing.
 
 | JMeter element | Status | Mapping / notes |
 |---|---|---|
-| `CSVDataSet` | supported | `filename`, `delimiter` (`\t` becomes a tab), and `variableNames` (split on the delimiter) map to `Columns`. `recycle` maps to `OnExhaust=recycle`, and `stopThread` to `stop`. |
+| `CSVDataSet` | supported | `filename`, `delimiter` (`\t` becomes a tab), and `variableNames` (split on `,` as in JMeter; names joined with the delimiter, as older Load Meter exports wrote them, are accepted as partial) map to `Columns`. `recycle` maps to `OnExhaust=recycle`, and `stopThread` to `stop`. |
 | CSV shareMode.all / shareMode.group | supported | Mapped to `sequential` (only one thread group is imported). |
 | CSV shareMode.thread | partial | Mapped to `per-vu`. In JMeter each thread reads the whole file; in Load Meter the row is chosen by VU index. |
 | CSV recycle=false, stopThread=false | partial | Mapped to `stop`. JMeter would continue with `<EOF>` values. |
@@ -96,19 +96,29 @@ time of writing, and that package is still changing.
 | `GaussianRandomTimer` | partial | Approximated as uniform `[offset−dev, offset+dev]`. |
 | `PoissonRandomTimer` | partial | Approximated as uniform with the same mean. |
 | Timers whose values use `${var}` | unsupported | Think needs a fixed duration. |
-| `ConstantThroughputTimer` | partial | Not converted. Use an arrival-rate executor instead (this is added to the manual list). |
-| `PreciseThroughputTimer`, `SyncTimer`, `kg.apc` timers | unsupported | |
+| `ConstantThroughputTimer` | supported | A `throughput` step (`perMinute`, `key` = timer location) before **each sampler in scope**. calcMode 0 → `scope: vu`, 1/2 → `active`, 3/4 → `shared` (group modes are noted: one workload). Stringprop and doubleProp forms are read. |
+| `SyncTimer` | supported / partial | A `rendezvous` step (`group` = groupSize, 0 = active VUs) before each sampler in scope. timeoutInMs 0 (wait forever) becomes the 30 s default (partial). |
+| `PreciseThroughputTimer`, `kg.apc` timers | unsupported | Use an arrival-rate executor (optionally `arrivals: poisson`). |
 | `TestAction` (Flow Control Action) with pause | supported | Mapped to a think step, plus any timers in scope. |
 | `TestAction` stop / restart / break | unsupported | |
 | `UserParameters` | supported | A `set` step is emitted before each sampler in scope. Multiple thread columns, or per-iteration with more than one sampler in scope, make it partial. |
 | `TransactionController` | supported | Mapped to a transaction step. With includeTimers=true it is partial, because Load Meter leaves think time out of transaction time. |
 | `LoopController` (nested) | supported | Loop with `Count`. `-1` becomes an enabled group (partial). A count that isn't a number becomes 1 (partial). |
 | `GenericController`, `RecordingController` | supported | Mapped to a group. |
-| `CriticalSectionController` | partial | Plain group: Load Meter has no locking across VUs. |
+| `CriticalSectionController` | supported | `critical` step with `key` = lockName (default `global_lock`), a run-wide lock. A lock name containing `${}` is used literally (partial). |
 | `IfController` with a simple condition | supported | Accepted forms: `"${x}" == "y"`, `"${x}" != "y"` (single quotes too), and the same wrapped in `${__jexl3(...)}`, `${__jexl2(...)}` or `${__groovy(...)}`. These become `${x} == y`. `${__groovy(vars.get("x") != null && vars.get("x") != "")}` becomes `${x}`. evaluateAll makes it partial. |
 | `IfController` with any other condition | unsupported | Children are kept in a disabled group, and the original condition is in the note. |
 | `OnceOnlyController` | partial | Children move to `Setup`, which Load Meter runs once per VU before iterations instead of at the controller's position. Inside setUp, tearDown or a disabled container it becomes a plain group. |
-| `WhileController`, `ForeachController`, `ThroughputController`, `InterleaveControl`, `RandomController`, `RandomOrderController`, `RunTime`, `SwitchController`, `ModuleController`, `IncludeController`, `TestFragmentController` | unsupported | Children are kept in a disabled group. Each child still gets its own item, noted "inside non-executed container". |
+| `WhileController` | partial | `while` step. Conditions: empty (stop after a pass whose last request failed), `LAST`, `${var}` (→ `${var} != false`), and the If Controller forms plus unquoted `${__jexl3(${x} != 10)}` (compared as text). Always partial: Load Meter caps the loop at 10 000 passes and an unresolved variable ends it (JMeter loops forever). Other conditions: unsupported, children in a disabled group. |
+| `ForeachController` | supported | `foreach` step: inputVal → `input`, returnVal → `var`, useSeparator=false → `noSeparator`, start/end index. `__jm__<name>__idx` is not set. |
+| `SwitchController` | supported | `switch` step with JMeter's selection rules. Each child element is one switch child (a sampler with timers is wrapped in a group of its name). |
+| `ThroughputController` | supported | `percent` step: percent style → `percent`, total executions → `executions`; per user unchecked → `shared`. 0 % / 0 executions → disabled group. |
+| `InterleaveControl` | supported / partial | Group with `select: roundRobin`; interleave across threads → `shared`. Partial when a child is a controller (Load Meter runs the whole child on its turn). |
+| `RandomController` | supported | Group with `select: weighted`, equal weights. |
+| `RandomOrderController` | supported | Group with `select: shuffle`. |
+| `RunTime` | supported | `runtime` step (`duration` = seconds), checked between children like JMeter. 0 s → unsupported (disabled group). |
+| `ModuleController`, `IncludeController`, `TestFragmentController` | unsupported | Children are kept in a disabled group. Each child still gets its own item, noted "inside non-executed container". |
+| ThreadGroup "same user on each iteration" off | supported | `workload.newUserEachIteration: true`. |
 
 ## Import: assertions and extractors
 
@@ -118,26 +128,32 @@ time of writing, and that package is still changing.
 | …Contains (2) | supported | Mapped to `regex` (find). The pattern must compile as Go RE2; otherwise unsupported (no lookaround or backreferences). |
 | …Matches (1) | supported | Mapped to `regex` `^(?:p)$`. |
 | …Equals (8) | supported | Mapped to `regex` `^quoted$`, with `${vars}` kept. |
+| …Equals (8) | supported | Mapped to `equals`. |
 | …NOT (4) with Substring or a literal Contains | supported | Mapped to `not_contains`. |
-| …NOT with a regex or Equals | unsupported | The model has no not-regex assertion. |
-| …OR (32) | supported | Mapped to one alternation regex. NOT+OR is unsupported. |
-| `ResponseAssertion` on the response code | supported | A code gives `status "200"`; `2\d\d`, `2..` or `2[0-9][0-9]` gives `"2xx"`; OR of codes gives `"200,201"`. AND of different codes, or NOT, is unsupported. |
+| …NOT with a regex or Equals | supported | Mapped to `regex` / `equals` with `"not": true` (one per pattern, AND). |
+| …OR (32) | supported | Mapped to one alternation regex. NOT+OR (passes when any pattern is absent) is unsupported. |
+| `ResponseAssertion` on the response code | supported | A code gives `status "200"`; `2\d\d`, `2..` or `2[0-9][0-9]` gives `"2xx"`; OR of codes gives `"200,201"`. NOT, AND of different codes and other patterns map to `equals`/`regex`/`contains` with `"source": "status"`. |
 | `ResponseAssertion` on response headers (Substring "Name: value") | partial | Mapped to a `header` assertion (name equals, value contains). JMeter matches the raw header block. |
-| `ResponseAssertion` on message, URL, request data or document | unsupported | |
-| `Assertion.assume_success` (Ignore Status) | partial | The status override is not modelled. |
-| `JSONPathAssertion` | supported | Mapped to `jsonpath` (with expected value when validation is on). A regex expected value, INVERT or EXPECT_NULL is unsupported. |
+| `ResponseAssertion` on response headers (other) or request headers | partial | `"source": "headers"` / `"requestHeaders"`. Load Meter renders headers as sorted `Name: value` lines with canonical name casing (the response block starts with the status line). |
+| `ResponseAssertion` on the response message or URL (sample_label) | supported | `"source": "message"` / `"url"`. |
+| `ResponseAssertion` on request data or the document | unsupported | |
+| `Assertion.custom_message` | supported | `message` on each mapped assertion. |
+| `Assertion.assume_success` (Ignore Status) | supported | `ignoreStatus: true` on every request in scope. A Response Assertion with no pattern that only sets Ignore Status is mapped too. |
+| `JSONPathAssertion` | supported | Mapped to `jsonpath` (with expected value when validation is on). INVERT → `not`; EXPECT_NULL → `expectNull`; ISREGEX (default true) with a non-literal or empty value → `regex: true` (Go RE2, full match). |
+| `SizeAssertion` | supported | `size` with `op` (`==` `!=` `>` `<` `>=` `<=`). Full response → `expr: "full"` (bytes on the wire), response data → `expr: "body"` (decoded size). Headers, code or message size is unsupported. |
+| `MD5HexAssertion` | supported | `hash` with `expr: "md5"`, on the decoded body as kept (up to `defaults.maxBodyBytes`). |
 | `DurationAssertion` | supported | Mapped to `max_latency` (e.g. `2s`). |
-| `RegexExtractor` (body) | supported | refname, regex and default map across. Template `$N$` becomes `Group`. match_number 0 becomes random (−1), N stays N, and −1 (all) becomes first (partial). |
-| `RegexExtractor` with a combined template, `$0$` plus groups, or the unescaped body | partial | |
-| `RegexExtractor` on headers | supported / unsupported | The exact patterns Load Meter exports for header and cookie extractors are recognised and mapped back. Other header regexes are unsupported. |
-| `RegexExtractor` on the response code | supported | Maps to the `status` extractor when the pattern is `(.*)`, `(.+)`, `(\d+)` or similar. |
-| `RegexExtractor` on URL, message or request headers | unsupported | |
-| `JSONPostProcessor` | supported | `;`-separated names, paths, match numbers and defaults become one extractor each. compute_concat or Jayway filters/functions make it partial. |
-| `BoundaryExtractor` | supported | Mapped to a `boundary` extractor. Header and other fields are unsupported. |
+| `RegexExtractor` (body) | supported | refname, regex and default map across. Template `$N$` becomes `group`; any other template (`$1$-$2$`, `$0$`, literal text) becomes `template`. match_number 0 → `-1` (random), −1 → `"all"` (`name_1..N`, `name_matchNr`, `name_N_gK`), N stays N. |
+| `RegexExtractor` with an empty template or on the unescaped body | partial | |
+| `RegexExtractor` on headers | supported / partial | The exact patterns Load Meter exports for header and cookie extractors are mapped back to `header`/`cookie`. Other header regexes use `"source": "headers"` (partial: header rendering differs, see above). |
+| `RegexExtractor` on the response code | supported | Maps to the `status` extractor when the pattern is `(.*)`, `(.+)`, `(\d+)` or similar; otherwise `"source": "status"`. |
+| `RegexExtractor` on URL, message or request headers | supported / partial | `"source": "url"` / `"message"` / `"requestHeaders"` (request headers partial). "Body as a document" is unsupported. |
+| `JSONPostProcessor` | supported | `;`-separated names, paths, match numbers and defaults become one extractor each. Match −1 → `"all"`; `name_ALL` (compute_concat) is always written in that mode. Jayway filters/functions make it partial. |
+| `BoundaryExtractor` | supported | Mapped to a `boundary` extractor, with the same `source` mapping as the regex extractor. |
 | `XPathExtractor` / `XPath2Extractor` | partial | Mapped to `xpath`. The XPath dialect, tolerant parsing and namespaces may differ. |
 | "Apply to" (`Sample.scope`) all/children | partial | Applied to the final response only. A `variable` scope is unsupported. |
 | Assertion/extractor/header/timer at controller or thread-group level | supported | Copied onto every sampler in scope. The note says how many samplers it was applied to, or "no sampler in scope". |
-| `HtmlExtractor` (CSS), `JMESPath*`, `Size/XPath/XPath2/HTML/MD5Hex/XML/XMLSchema/Compare/SMIME` assertions | unsupported | |
+| `HtmlExtractor` (CSS), `JMESPath*`, `XPath/XPath2/HTML/XML/XMLSchema/Compare/SMIME` assertions | unsupported | |
 
 ## Import: non-HTTP, scripts, listeners
 
@@ -156,10 +172,12 @@ time of writing, and that package is still changing.
 |---|---|---|
 | `${var}` | `${var}` | supported |
 | `${__UUID()}`, `${__UUID}` | `${__uuid()}` | supported |
-| `${__Random(a,b)}` | `${__randomInt(a,b)}` | supported (partial when a result variable is given) |
+| `${__Random(a,b[,var])}` | `${__randomInt(a,b[,var])}` | supported |
 | `${__time()}`, `${__time(,)}` | `${__timestamp()}` | supported |
-| `${__time(fmt,)}` | `${__timestamp(fmt)}` | partial (only a SimpleDateFormat subset) |
-| `${__counter(FALSE,)}` | `${__counter()}` | supported. `TRUE` (per-thread) is partial because the Load Meter counter is global. |
+| `${__time(fmt,var)}`, `${__time(/1000,)}`, `${__time(YMD,)}` | `${__timestamp(fmt[,var])}` | supported (full SimpleDateFormat letter set, English names) |
+| `${__counter(FALSE,var)}` / `${__counter(TRUE,var)}` | `${__counter([FALSE,var])}` / `${__counter(TRUE[,var])}` | supported (TRUE = per VU) |
+| `${__V}`, `__eval`, `__evalVar`, `__isVarDefined`, `__split`, `__intSum`, `__longSum`, `__changeCase`, `__digest`, `__base64Encode`, `__base64Decode`, `__escapeHtml`, `__unescapeHtml`, `__escapeXml`, `__urldecode`, `__unescape`, `__char`, `__timeShift`, `__RandomDate`, `__dateTimeConvert`, `__RandomFromMultipleVars` | same arguments; `__V` → `__v`, `__RandomDate` → `__randomDate`, `__RandomFromMultipleVars` → `__randomFromVars`, others keep their name | supported. A non-English locale argument is partial (ignored). |
+| `${__escapeOroRegexpChars(x,)}` | `${__escapeRegex(x,)}` | partial (Go RE2 quoting) |
 | `${__threadNum}` | `${__vu()}` | supported |
 | `${__RandomString(n,chars)}` | `${__randomString(n)}` | supported when chars is empty or `[a-zA-Z0-9]`; partial otherwise |
 | `${__P(name,default)}`, `${__property(name,,default)}` | `${name}` + `Variables[name]=default` | partial (property becomes a variable) |
@@ -178,7 +196,7 @@ time of writing, and that package is still changing.
 | `Defaults.FollowRedirects` | per-sampler follow_redirects | supported |
 | `InsecureSkipVerify` | n/a (JMeter does not verify certificates by default) | supported (note) |
 | `MaxBodyBytes` | n/a | ignored |
-| `DataSources` with a file | CSVDataSet | supported. Tab delimiter becomes `\t`; columns become variableNames. |
+| `DataSources` with a file | CSVDataSet | supported. Tab delimiter becomes `\t`; columns become variableNames, always joined with `,`. |
 | `DataSources` with inline `Rows` | CSVDataSet pointing at `<name>.csv` | partial: you must write the companion CSV (added to `Manual`) |
 | DataSource mode per-vu / random / unique; onExhaust error; scope vu | shareMode.thread / sequential / no-recycle+stop | partial |
 | `constant-vus` | ThreadGroup N threads, scheduler duration | supported |
@@ -201,20 +219,28 @@ time of writing, and that package is still changing.
 | if `${a}` (non-empty) | IfController `${__groovy(vars.get("a") != null && vars.get("a") != "")}` | supported |
 | other conditions | written as-is (JMeter would evaluate them as JavaScript) | unsupported |
 | group / disabled step | GenericController / `enabled="false"` | supported |
+| while / foreach / switch / percent / runtime / critical | WhileController / ForeachController / SwitchController / ThroughputController / RunTime / CriticalSectionController | supported. while: partial when the condition is `${x}` (JMeter stops only on the literal `false`) or a comparison (an unresolved variable stops Load Meter, not JMeter); unconvertible conditions are written verbatim (unsupported). A while `duration` is not exported; runtime rounds up to whole seconds. |
+| group `select: shuffle` / `roundRobin` / `weighted` with equal weights | RandomOrderController / InterleaveControl (accrossThreads = `shared`) / RandomController | supported. Unequal weights stay partial (Simple Controller). |
+| throughput / rendezvous step | Flow Control Action (pause 0) carrying a ConstantThroughputTimer / SyncTimer | supported |
+| `workload.newUserEachIteration` / `arrivals: poisson` | same_user_on_next_iteration=false / none | supported / partial |
 | extractor regex / jsonpath / boundary | RegexExtractor / JSONPostProcessor / BoundaryExtractor | supported. Regex is written as-is: RE2 and Perl5 syntax differ only in advanced features. |
 | extractor xpath | XPath2Extractor | partial |
 | extractor header | RegexExtractor on headers `(?im)^Name:\s*([^\r\n]*)` | supported |
 | extractor cookie | RegexExtractor on Set-Cookie | partial (this response only, no cookie-jar fallback) |
 | extractor status | RegexExtractor on the response code `(.*)` | supported |
 | extractor `Required` | n/a | partial |
-| match 0 / −1 / N | 1 / 0 (random) / N | supported |
+| match 0 / −1 / `"all"` / N | 1 / 0 (random) / −1 / N | supported. `"all"` on a JSON extractor also sets compute_concat. `maxMatches` is not exported. |
+| extractor `template`, `source` | RegexExtractor template; useHeaders `true` / `request_headers` / `URL` / `code` / `message` | supported (headers sources partial) |
 | assert status | ResponseAssertion on the response code: Equals, Matches for `Nxx`, OR for lists | supported |
-| assert contains / not_contains / regex | ResponseAssertion Substring / NOT Substring / Contains | supported |
-| assert jsonpath / max_latency | JSONPathAssertion (ISREGEX=false) / DurationAssertion | supported |
+| assert contains / not_contains / regex / equals | ResponseAssertion Substring / NOT Substring / Contains / Equals; `source` → test_field; `message` → custom_message; `not` → NOT bit | supported |
+| assert jsonpath / max_latency | JSONPathAssertion (ISREGEX, INVERT, EXPECT_NULL from `regex`, `not`, `expectNull`) / DurationAssertion | supported. A negated max_latency is not exported. |
+| assert size / hash | SizeAssertion (`not` inverts the operator) / MD5HexAssertion | supported. Only md5 hashes, without `not`, are exported. |
+| request `ignoreStatus` | assume_success on the request's first Response Assertion, or a pass-through Response Assertion | supported |
 | assert header | ResponseAssertion Substring on headers "Name: value" | partial |
 | SLAs | none | unsupported (JMeter has no built-in pass/fail criteria) |
-| Load Meter functions `__uuid`, `__randomInt`, `__timestamp`, `__counter`, `__vu`, `__randomString`, `__urlencode` | `__UUID`, `__Random`, `__time`, `__counter(FALSE,)`, `__threadNum`, `__RandomString(n,[a-zA-Z0-9])`, `__urlencode` | supported |
-| other Load Meter functions (`__iteration`, `__env`) | left as text | partial |
+| Load Meter functions `__uuid`, `__randomInt`, `__timestamp`, `__counter`, `__vu`, `__randomString`, `__urlencode` | `__UUID`, `__Random`, `__time`, `__counter(FALSE,)` / `__counter(TRUE,)`, `__threadNum`, `__RandomString(n,[a-zA-Z0-9])`, `__urlencode` | supported |
+| the JMeter-compatible functions listed under import | their JMeter names | supported (`__base64*` partial: needs jmeter-plugins) |
+| other Load Meter functions (`__iteration`, `__env`, `__randomFromList`) | left as text | partial |
 
 All text and attribute values are XML-escaped with `encoding/xml.EscapeText`.
 Collection entries are named with Java `String.hashCode()`, as JMeter does.
@@ -225,15 +251,15 @@ These JMeter features have no field in `internal/model`. They are mapped to
 partial or unsupported items:
 
 1. **Skipping a CSV header while naming columns.** `DataSource` cannot express "ignore the first line, and use these column names".
-2. **Inverted assertions.** There is no negated regex, negated equals or negated status assertion, and no "Ignore Status" flag on a request.
+2. **NOT combined with OR** in a Response Assertion (passes when any one pattern is absent).
 3. **Request-level auth and client certificates.** There is nothing for AuthManager (Basic, Digest or Kerberos) or KeystoreConfig.
-4. **Predefined cookies and cookie policy.** There are no initial cookies and no per-iteration cookie clearing.
+4. **Predefined cookies and cookie policy.** There are no initial cookies. Per-iteration clearing exists only as `workload.newUserEachIteration`, which also resets auth and connections, so a Cookie Manager's "clear each iteration" is reported, not mapped.
 5. **Embedded resource download.** There is no field for `image_parser` or concurrent downloads.
 6. **Separate connect and read timeouts.** The model has one `Timeout`.
 7. **Startup delay, on-sampler-error action and stepped or loop+duration thread schedules.** `Workload` has no delay, no error policy and no "loops OR duration".
-8. **"All matches" extraction (match −1)** and template concatenation (`$1$-$2$`). An extractor yields one value from one group.
-9. **Extractors on the raw header block, URL or response message.** Regex extractors read the body only.
-10. **Loops of unknown length** (While, ForEach, infinite Loop) and the Throughput, Interleave, Random, Switch and Runtime controllers. The `Step` types are only request, transaction, think, loop with a count, if, group and set.
-11. **Throughput shaping inside a closed workload.** There is no per-sampler throughput timer.
-12. **Per-thread counters and JMeter properties.** `__counter` is global, and properties become plain variables.
+8. **Raw header blocks.** Header sources are rebuilt from Go's parsed headers (sorted, canonical name casing), so a JMeter regex that depends on the server's exact header order or casing can behave differently.
+9. **Extraction from a variable ("Apply to: JMeter variable") and body-as-document.**
+10. **Infinite Loop Controller (-1)** has no unbounded loop step (While, ForEach, Throughput, Interleave, Random, Random Order, Switch and Runtime controllers are now mapped; see above).
+11. **Precise Throughput Timer and plugin shaping timers.** The `throughput` step reproduces only the Constant Throughput Timer.
+12. **JMeter properties.** Properties become plain variables.
 13. **Scoped data sources.** Data sources are scenario-wide, so a CSV cannot advance on each pass of a loop controller.

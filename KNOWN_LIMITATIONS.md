@@ -105,3 +105,22 @@ Honest list. Anything not listed here and not in the support matrices should be 
 - DNS overrides don't apply to proxied targets. Client certs per host, not per VU.
 - `hiddenRetries`/`newConnections` not merged in distributed aggregation.
 - Flaky: `TestStartRunWithVarsOnScenarioWithoutVariables` (TempDir race); `TestPerformanceOneMillionRows` can time out under load.
+
+## Control flow (second wave)
+- Loops (`while`, `foreach`, `runtime`) are bounded by `maxIterations` (default 10 000, max 1 000 000), run duration and policy `maxDuration`. In `while`, an unresolved variable is false (JMeter would loop forever); imported While is always partial.
+- `throughput` only slows VUs; no "target not reached" finding. Poisson arrivals use exponential gaps, not Precise Throughput Timer blocks (unsupported).
+- `rendezvous` max wait is its timeout (default 30 s, max 1 h); `group: 0` = VUs active at arrival. `critical` waits count in transaction time.
+- `newUserEachIteration` doesn't reset connections when `connections: shared`.
+- JMX While conditions convert only when empty, `LAST`, `${var}` or simple ==/!=. Module/Include controllers, Test Fragments, infinite Loop (-1) stay disabled groups.
+- k6 export: rendezvous skipped, critical sections unlocked, shared counters per-VU, while-on-last-result runs once.
+- Not done: G14, G15, G18, G20.
+
+## Extractors, assertions and functions
+- Header sources are rebuilt from parsed headers (sorted, canonical casing); JMeter regexes depending on raw order/casing can differ.
+- `match: "all"` sets `name` to the first match and always writes `name_ALL`; regex extractors always write `name_g*`.
+- `hash` covers only the body kept up to `maxBodyBytes`; JMX hash export is md5 only.
+- Unsupported: Response Assertion NOT+OR, "Not passes on empty", request-data/document fields.
+- Date functions: English only, locale ignored; parsing lacks `G Y w W F u k K`; `__timeShift` D/H/M/S only.
+- Behaviour changes: `${...}` inside scenario/CSV/`set` values now expands; `\\` in function args is one backslash; failed transaction rows have empty responseCode.
+- k6 export ignores these features (each noted in the report).
+- raw.csv `grpThreads` = `allThreads`; transaction counts exclude nested transactions.

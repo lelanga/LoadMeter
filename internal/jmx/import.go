@@ -86,8 +86,9 @@ type exRef struct {
 }
 
 type asRef struct {
-	as   []model.Assertion
-	item int
+	as     []model.Assertion
+	item   int
+	ignore bool // JMeter "Ignore Status" -> request ignoreStatus (checks.go)
 }
 
 // scope models JMeter's scoping rules: config elements, timers, pre/post
@@ -501,11 +502,9 @@ var unsupportedScoped = map[string]string{
 	"HtmlExtractor":             "CSS Selector Extractor not supported (Load Meter has no CSS extractor); rewrite as regex or boundary",
 	"JMESPathExtractor":         "JMESPath extractor not supported; rewrite as jsonpath",
 	"JMESPathAssertion":         "JMESPath assertion not supported; rewrite as jsonpath",
-	"SizeAssertion":             "Size Assertion not supported",
 	"XPathAssertion":            "XPath Assertion not supported",
 	"XPath2Assertion":           "XPath2 Assertion not supported",
 	"HTMLAssertion":             "HTML (tidy) Assertion not supported",
-	"MD5HexAssertion":           "MD5Hex Assertion not supported",
 	"XMLAssertion":              "XML well-formedness Assertion not supported",
 	"XMLSchemaAssertion":        "XML Schema Assertion not supported",
 	"CompareAssertion":          "Compare Assertion not supported",
@@ -518,7 +517,6 @@ var unsupportedScoped = map[string]string{
 	"JDBCPostProcessor":         "JDBC PostProcessor not supported (non-HTTP)",
 	"ResultAction":              "Result Status Action Handler not supported (Load Meter continues on failure)",
 	"PreciseThroughputTimer":    "Precise Throughput Timer not supported; use a constant-arrival-rate workload",
-	"SyncTimer":                 "Synchronizing Timer not supported (no rendezvous in Load Meter)",
 	"LoginConfig":               "Login Config element not supported",
 }
 
@@ -558,11 +556,10 @@ func (im *importer) scopedElement(k elem, sc *scope, loc string) bool {
 	case tc == "ConstantTimer", tc == "UniformRandomTimer", tc == "GaussianRandomTimer", tc == "PoissonRandomTimer":
 		im.timer(k, sc, loc)
 	case tc == "ConstantThroughputTimer":
-		im.add(tc, name, loc, model.Partial, fmt.Sprintf(
-			"Constant Throughput Timer (%s samples/min) not converted: use a constant-arrival-rate workload (iterations/s) instead",
-			strings.TrimSpace(orDefault(n.str("throughput"), n.str("ConstantThroughputTimer.throughput")))))
-		im.manual("Replace Constant Throughput Timer %q with a Load Meter arrival-rate executor", name)
-	case tc == "ResponseAssertion", tc == "JSONPathAssertion", tc == "DurationAssertion":
+		im.cttTimer(k, sc, loc) // control.go
+	case tc == "SyncTimer":
+		im.syncTimer(k, sc, loc) // control.go
+	case tc == "ResponseAssertion", tc == "JSONPathAssertion", tc == "DurationAssertion", tc == "SizeAssertion", tc == "MD5HexAssertion":
 		im.assertion(k, sc, loc)
 	case tc == "RegexExtractor", tc == "JSONPostProcessor", tc == "BoundaryExtractor", tc == "XPathExtractor", tc == "XPath2Extractor":
 		im.extractor(k, sc, loc)
@@ -764,7 +761,7 @@ func (im *importer) cookieManager(k elem, sc *scope, loc string) {
 		im.escalate(idx, model.Partial, fmt.Sprintf("JMeter cookie policy %q not reproduced", p))
 	}
 	if n.boolean("CookieManager.clearEachIteration", false) {
-		im.escalate(idx, model.Partial, "\"Clear cookies each iteration\" not represented in the model; verify Load Meter jar lifetime")
+		im.escalate(idx, model.Partial, "\"Clear cookies each iteration\" not imported; set workload.newUserEachIteration (also resets auth cache and per-VU connections)")
 	}
 	if cs, _ := n.coll("CookieManager.cookies"); len(cs) > 0 {
 		im.escalate(idx, model.Partial, fmt.Sprintf("%d predefined cookie(s) not imported (model has no initial cookies); send them as a Cookie header", len(cs)))
@@ -797,9 +794,12 @@ func (im *importer) csv(k elem, sc *scope, loc string) {
 	}
 	ds := model.DataSource{Name: name, File: file, Delimiter: delim}
 	if names := strings.TrimSpace(n.str("variableNames")); names != "" {
-		sep := delim
-		if !strings.Contains(names, sep) && strings.Contains(names, ",") {
-			sep = ","
+		// JMeter always splits variableNames on "," (CSVDataSet.java). Older
+		// Load Meter exports joined them with the delimiter; accept that too.
+		sep := ","
+		if !strings.Contains(names, ",") && delim != "," && strings.Contains(names, delim) {
+			sep = delim
+			im.escalate(idx, model.Partial, fmt.Sprintf("variableNames %q split on the delimiter %q (JMeter splits on \",\" and would see one name)", names, delim))
 		}
 		for _, c := range strings.Split(names, sep) {
 			if c = strings.TrimSpace(c); c != "" {
@@ -935,32 +935,17 @@ func (im *importer) assertion(k elem, sc *scope, loc string) {
 	n := k.n
 	tc := testClass(n)
 	idx := im.add(tc, nameOf(n), loc, model.Supported, "")
-	var as []model.Assertion
-	var st, note string
-	switch tc {
-	case "ResponseAssertion":
-		as, st, note = im.responseAssertion(n, loc)
-	case "JSONPathAssertion":
-		as, st, note = im.jsonPathAssertion(n, loc)
-	case "DurationAssertion":
-		ms := msOpt(n.str("DurationAssertion.duration"))
-		if ms <= 0 {
-			st, note = model.Unsupported, fmt.Sprintf("duration %q is not a positive number of milliseconds", n.str("DurationAssertion.duration"))
-		} else {
-			as = []model.Assertion{{Type: model.AsMaxLatency, Value: time.Duration(ms * int64(time.Millisecond)).String()}}
-			st = model.Supported
-		}
-	}
+	as, ignore, st, note := im.checkAssertion(tc, n, loc) // checks.go
 	im.escalate(idx, st, note)
 	sst, snote := sampleScope(n)
 	im.escalate(idx, sst, snote)
-	if len(as) == 0 || sst == model.Unsupported {
+	if (len(as) == 0 && !ignore) || sst == model.Unsupported {
 		if rank[im.rep.Items[idx].Status] < rank[model.Unsupported] {
 			im.escalate(idx, model.Unsupported, "nothing mapped")
 		}
 		return
 	}
-	sc.asserts = append(sc.asserts, asRef{as: as, item: idx})
+	sc.asserts = append(sc.asserts, asRef{as: as, item: idx, ignore: ignore})
 	im.scoped = append(im.scoped, idx)
 }
 
@@ -969,145 +954,6 @@ var (
 	classRE = regexp.MustCompile(`^([1-5])(?:\\d\\d|\.\.|\[0-9\]\[0-9\]|\\d\{2\}|\[0-9\]\{2\})$`)
 )
 
-func (im *importer) responseAssertion(n *node, loc string) ([]model.Assertion, string, string) {
-	field := strings.TrimSpace(n.str("Assertion.test_field"))
-	if field == "" {
-		field = "Assertion.response_data"
-	}
-	tt, err := strconv.Atoi(strings.TrimSpace(n.str("Assertion.test_type")))
-	if err != nil {
-		return nil, model.Unsupported, fmt.Sprintf("invalid test_type %q", n.str("Assertion.test_type"))
-	}
-	list, ok := n.coll("Asserion.test_strings") // sic: JMeter's property name
-	if !ok {
-		list, _ = n.coll("Assertion.test_strings")
-	}
-	var pats []string
-	for _, c := range list {
-		pats = append(pats, im.conv(c.Text(), loc))
-	}
-	if len(pats) == 0 {
-		return nil, model.Unsupported, "no patterns to test"
-	}
-	not, or := tt&4 != 0, tt&32 != 0
-	mode := map[int]string{1: "matches", 2: "contains", 8: "equals", 16: "substring"}[tt&^36]
-	if mode == "" {
-		return nil, model.Unsupported, fmt.Sprintf("unsupported test_type %d", tt)
-	}
-	status, note := model.Supported, ""
-	if n.boolean("Assertion.assume_success", false) {
-		status, note = model.Partial, "\"Ignore Status\" is set: JMeter ignores the HTTP status for pass/fail; Load Meter fails >= 400 responses unless a status assertion is present"
-	}
-	desc := mode
-	if not {
-		desc = "NOT " + desc
-	}
-	if or {
-		desc += " (OR)"
-	}
-	unsup := func(why string) ([]model.Assertion, string, string) {
-		return nil, model.Unsupported, joinNote(note, fmt.Sprintf("%s on %s: %s", desc, strings.TrimPrefix(field, "Assertion."), why))
-	}
-	toRegex := func(p string) string {
-		switch mode {
-		case "substring":
-			return quoteKeepVars(p)
-		case "equals":
-			return "^" + quoteKeepVars(p) + "$"
-		case "matches":
-			return "^(?:" + p + ")$"
-		}
-		return p
-	}
-	switch field {
-	case "Assertion.response_data":
-		var as []model.Assertion
-		switch {
-		case !not && or && len(pats) > 1:
-			alts := make([]string, len(pats))
-			for i, p := range pats {
-				alts[i] = toRegex(p)
-			}
-			re := "(?:" + strings.Join(alts, "|") + ")"
-			if err := re2Error(re); err != nil {
-				return unsup("pattern is not RE2-compatible: " + err.Error())
-			}
-			as = append(as, model.Assertion{Type: model.AsRegex, Expr: re})
-		case !not:
-			for _, p := range pats {
-				if mode == "substring" {
-					as = append(as, model.Assertion{Type: model.AsContains, Value: p})
-					continue
-				}
-				re := toRegex(p)
-				if err := re2Error(re); err != nil {
-					return unsup("pattern is not RE2-compatible (Go regexp has no backreferences/lookaround): " + err.Error())
-				}
-				as = append(as, model.Assertion{Type: model.AsRegex, Expr: re})
-			}
-		case not && (!or || len(pats) == 1):
-			for _, p := range pats {
-				if mode == "substring" || (mode == "contains" && isLiteralPattern(p)) {
-					as = append(as, model.Assertion{Type: model.AsNotContains, Value: p})
-					continue
-				}
-				return unsup("negated regex/equality has no Load Meter assertion type")
-			}
-		default:
-			return unsup("NOT combined with OR has no Load Meter equivalent")
-		}
-		if mode == "contains" || mode == "matches" {
-			note = joinNote(note, "JMeter uses Perl5 (ORO) regex, Load Meter uses Go RE2; syntax checked to compile")
-		}
-		return as, status, note
-	case "Assertion.response_code":
-		if not {
-			return unsup("negated status checks are not supported")
-		}
-		var vals []string
-		classes := 0
-		for _, p := range pats {
-			p = strings.TrimSpace(p)
-			switch {
-			case codeRE.MatchString(p):
-				vals = append(vals, p)
-			case (mode == "matches" || mode == "contains") && classRE.MatchString(p):
-				vals = append(vals, classRE.FindStringSubmatch(p)[1]+"xx")
-				classes++
-			default:
-				return unsup(fmt.Sprintf("status pattern %q is not a status code or class", p))
-			}
-		}
-		if len(vals) > 1 && !or {
-			for _, v := range vals[1:] {
-				if v != vals[0] {
-					return unsup("AND of different status codes can never pass")
-				}
-			}
-			vals = vals[:1]
-		}
-		if classes > 0 && len(vals) > 1 {
-			status = model.Partial
-			note = joinNote(note, "list mixes status classes and codes; verify Load Meter accepts it")
-		}
-		return []model.Assertion{{Type: model.AsStatus, Value: strings.Join(vals, ",")}}, status, note
-	case "Assertion.response_headers":
-		if not || (or && len(pats) > 1) || !(mode == "substring" || (mode == "contains" && allLiteral(pats))) {
-			return unsup("only plain (non-negated) substring header checks are mapped")
-		}
-		var as []model.Assertion
-		for _, p := range pats {
-			i := strings.Index(p, ":")
-			if i <= 0 {
-				return unsup(fmt.Sprintf("pattern %q is not of the form 'Name: value'", p))
-			}
-			as = append(as, model.Assertion{Type: model.AsHeader, Expr: strings.TrimSpace(p[:i]), Value: strings.TrimSpace(p[i+1:])})
-		}
-		return as, model.Partial, joinNote(note, "JMeter matches the raw header block (case-sensitive); mapped to a Load Meter header name/contains-value check")
-	}
-	return unsup("this test field is not supported")
-}
-
 func allLiteral(ps []string) bool {
 	for _, p := range ps {
 		if !isLiteralPattern(p) {
@@ -1115,32 +961,6 @@ func allLiteral(ps []string) bool {
 		}
 	}
 	return true
-}
-
-func (im *importer) jsonPathAssertion(n *node, loc string) ([]model.Assertion, string, string) {
-	p := strings.TrimSpace(n.str("JSON_PATH"))
-	if p == "" {
-		return nil, model.Unsupported, "empty JSON path"
-	}
-	if n.boolean("INVERT", false) {
-		return nil, model.Unsupported, "inverted JSON assertion has no Load Meter equivalent"
-	}
-	if n.boolean("EXPECT_NULL", false) {
-		return nil, model.Unsupported, "\"expect null\" has no Load Meter equivalent"
-	}
-	a := model.Assertion{Type: model.AsJSONPath, Expr: im.conv(p, loc)}
-	status, note := model.Supported, ""
-	if n.boolean("JSONVALIDATION", false) {
-		exp := n.str("EXPECTED_VALUE")
-		if n.boolean("ISREGEX", true) && !isLiteralPattern(exp) {
-			return nil, model.Unsupported, fmt.Sprintf("expected value %q is a regular expression; Load Meter compares for equality", exp)
-		}
-		if exp == "" {
-			status, note = model.Partial, "JMeter expects an empty value; Load Meter only checks that the path exists"
-		}
-		a.Value = im.conv(exp, loc)
-	}
-	return []model.Assertion{a}, status, note
 }
 
 func (im *importer) extractor(k elem, sc *scope, loc string) {
@@ -1172,22 +992,6 @@ func (im *importer) extractor(k elem, sc *scope, loc string) {
 	im.scoped = append(im.scoped, idx)
 }
 
-// matchNo maps a JMeter match number (0 random, -1 all, N nth) to the model.
-func matchNo(s string) (int, string, string) {
-	s = strings.TrimSpace(s)
-	if s == "" || s == "0" {
-		return -1, model.Supported, ""
-	}
-	v, err := strconv.Atoi(s)
-	switch {
-	case err != nil:
-		return 0, model.Partial, fmt.Sprintf("match number %q is not a number; first match used", s)
-	case v < 0:
-		return 0, model.Partial, "match number -1 (all matches -> name_1..name_N, name_matchNr) not supported; first match stored"
-	}
-	return v, model.Supported, ""
-}
-
 const (
 	hdrPrefix    = "(?im)^"
 	hdrSuffix    = `:\s*([^\r\n]*)`
@@ -1202,73 +1006,6 @@ func unquoteName(q string) (string, bool) {
 	return name, name != "" && regexp.QuoteMeta(name) == q
 }
 
-func (im *importer) regexExtractor(n *node, loc string) ([]model.Extractor, string, string) {
-	refname := strings.TrimSpace(n.str("RegexExtractor.refname"))
-	if refname == "" {
-		return nil, model.Unsupported, "no reference name"
-	}
-	re := im.conv(n.str("RegexExtractor.regex"), loc)
-	ex := model.Extractor{Name: refname, Type: model.ExRegex, Expr: re, Default: im.conv(n.str("RegexExtractor.default"), loc)}
-	status, note := model.Supported, ""
-	esc := func(s, nt string) {
-		if rank[s] > rank[status] {
-			status = s
-		}
-		note = joinNote(note, nt)
-	}
-	m, s, nt := matchNo(n.str("RegexExtractor.match_number"))
-	ex.Match = m
-	esc(s, nt)
-	tpl := strings.TrimSpace(n.str("RegexExtractor.template"))
-	groups := tplGroupRE.FindAllStringSubmatch(tpl, -1)
-	switch {
-	case len(groups) == 1 && groups[0][0] == tpl:
-		ex.Group, _ = strconv.Atoi(groups[0][1])
-	case len(groups) >= 1:
-		ex.Group, _ = strconv.Atoi(groups[0][1])
-		esc(model.Partial, fmt.Sprintf("template %q combines text/groups; only group %d is extracted", tpl, ex.Group))
-	default:
-		esc(model.Partial, fmt.Sprintf("template %q has no $N$ group; whole match used", tpl))
-	}
-	if ex.Group == 0 {
-		if c, err := regexp.Compile(varRefRE.ReplaceAllString(re, "x")); err == nil && c.NumSubexp() > 0 {
-			esc(model.Partial, "template $0$ (whole match) with capture groups: Load Meter group 0 means \"group 1 if the regex has groups\"")
-		}
-	}
-	switch field := strings.TrimSpace(n.str("RegexExtractor.useHeaders")); field {
-	case "", "false":
-	case "unescaped":
-		esc(model.Partial, "JMeter HTML-unescapes the body before matching; Load Meter matches the raw body")
-	case "true":
-		switch {
-		case strings.HasPrefix(re, cookiePrefix) && strings.HasSuffix(re, cookieSuffix):
-			if name, ok := unquoteName(strings.TrimSuffix(strings.TrimPrefix(re, cookiePrefix), cookieSuffix)); ok {
-				ex.Type, ex.Expr, ex.Group = model.ExCookie, name, 0
-				return []model.Extractor{ex}, status, joinNote(note, "Set-Cookie header regex mapped to a cookie extractor")
-			}
-		case strings.HasPrefix(re, hdrPrefix) && strings.HasSuffix(re, hdrSuffix):
-			if name, ok := unquoteName(strings.TrimSuffix(strings.TrimPrefix(re, hdrPrefix), hdrSuffix)); ok {
-				ex.Type, ex.Expr, ex.Group = model.ExHeader, name, 0
-				return []model.Extractor{ex}, status, note
-			}
-		}
-		return nil, model.Unsupported, joinNote(note, fmt.Sprintf("regex %q on response headers: Load Meter regex extractors read the body only; use a header extractor", re))
-	case "code":
-		switch re {
-		case "(.*)", "(.+)", `(\d+)`, `(\d{3})`, `(\d\d\d)`:
-			ex.Type, ex.Expr, ex.Group = model.ExStatus, "", 0
-			return []model.Extractor{ex}, status, note
-		}
-		return nil, model.Unsupported, joinNote(note, fmt.Sprintf("regex %q on the response code is not supported", re))
-	default:
-		return nil, model.Unsupported, joinNote(note, fmt.Sprintf("regex on %q is not supported (Load Meter extracts from the body)", field))
-	}
-	if err := re2Error(re); err != nil {
-		return nil, model.Unsupported, joinNote(note, "regex is not RE2-compatible (Go regexp has no backreferences/lookaround): "+err.Error())
-	}
-	return []model.Extractor{ex}, status, note
-}
-
 func splitSemi(s string) []string {
 	if strings.TrimSpace(s) == "" {
 		return nil
@@ -1278,70 +1015,6 @@ func splitSemi(s string) []string {
 		parts[i] = strings.TrimSpace(parts[i])
 	}
 	return parts
-}
-
-func (im *importer) jsonExtractor(n *node, loc string) ([]model.Extractor, string, string) {
-	names := splitSemi(n.str("JSONPostProcessor.referenceNames"))
-	exprs := splitSemi(n.str("JSONPostProcessor.jsonPathExprs"))
-	mns := splitSemi(n.str("JSONPostProcessor.match_numbers"))
-	defs := strings.Split(n.str("JSONPostProcessor.defaultValues"), ";")
-	if len(names) == 0 {
-		return nil, model.Unsupported, "no reference names"
-	}
-	if len(exprs) != len(names) {
-		return nil, model.Unsupported, fmt.Sprintf("%d names but %d JSON paths (JMeter would fail too)", len(names), len(exprs))
-	}
-	status, note := model.Supported, ""
-	var out []model.Extractor
-	for i, nm := range names {
-		mn := ""
-		if i < len(mns) {
-			mn = mns[i]
-		} else if len(mns) == 1 {
-			mn = mns[0]
-		}
-		m, s, nt := matchNo(mn)
-		if rank[s] > rank[status] {
-			status = s
-		}
-		note = joinNote(note, nt)
-		def := ""
-		if i < len(defs) {
-			def = defs[i]
-		}
-		e := exprs[i]
-		if strings.Contains(e, "?(") || strings.Contains(e, "()") {
-			status = model.Partial
-			note = joinNote(note, fmt.Sprintf("%q uses Jayway JSONPath filters/functions; verify Load Meter JSONPath supports them", e))
-		}
-		out = append(out, model.Extractor{Name: nm, Type: model.ExJSONPath, Expr: im.conv(e, loc), Match: m, Default: im.conv(def, loc)})
-	}
-	if n.boolean("JSONPostProcessor.compute_concat", false) {
-		status = model.Partial
-		note = joinNote(note, "\"compute concatenation\" (name_ALL) not supported")
-	}
-	if len(names) > 1 {
-		note = joinNote(note, fmt.Sprintf("split into %d extractors", len(names)))
-	}
-	return out, status, note
-}
-
-func (im *importer) boundaryExtractor(n *node, loc string) ([]model.Extractor, string, string) {
-	refname := strings.TrimSpace(n.str("BoundaryExtractor.refname"))
-	if refname == "" {
-		return nil, model.Unsupported, "no reference name"
-	}
-	if f := strings.TrimSpace(n.str("BoundaryExtractor.useHeaders")); f != "" && f != "false" {
-		return nil, model.Unsupported, fmt.Sprintf("boundary extraction from %q is not supported (Load Meter extracts from the body)", f)
-	}
-	m, status, note := matchNo(n.str("BoundaryExtractor.match_number"))
-	ex := model.Extractor{Name: refname, Type: model.ExBoundary, Left: im.conv(n.str("BoundaryExtractor.lboundary"), loc),
-		Right: im.conv(n.str("BoundaryExtractor.rboundary"), loc), Match: m, Default: im.conv(n.str("BoundaryExtractor.default"), loc)}
-	if ex.Left == "" && ex.Right == "" {
-		status = model.Partial
-		note = joinNote(note, "both boundaries empty (JMeter returns the whole response)")
-	}
-	return []model.Extractor{ex}, status, note
 }
 
 func (im *importer) xpathExtractor(n *node, loc string) ([]model.Extractor, string, string) {
@@ -1375,14 +1048,6 @@ var nonHTTPSamplers = map[string]bool{"JSR223Sampler": true, "BeanShellSampler":
 	"SystemSampler": true, "AjpSampler": true, "MailReaderSampler": true, "AccessLogSampler": true, "BoltSampler": true}
 
 var unsupportedControllers = map[string]string{
-	"WhileController":        "While Controller",
-	"ForeachController":      "ForEach Controller",
-	"ThroughputController":   "Throughput Controller",
-	"InterleaveControl":      "Interleave Controller",
-	"RandomController":       "Random Controller",
-	"RandomOrderController":  "Random Order Controller",
-	"RunTime":                "Runtime Controller",
-	"SwitchController":       "Switch Controller",
 	"ModuleController":       "Module Controller",
 	"IncludeController":      "Include Controller",
 	"TestFragmentController": "Test Fragment",
@@ -1410,9 +1075,8 @@ func (im *importer) execElement(k elem, sc *scope, loc string) []model.Step {
 	case tc == "GenericController" || tc == "RecordingController":
 		im.add(tc, name, loc, model.Supported, "mapped to a group step")
 		return []model.Step{{Type: model.StepGroup, Name: name, Comment: comment(n), Steps: im.buildLevel(k.kids, ctrl, loc)}}
-	case tc == "CriticalSectionController":
-		im.add(tc, name, loc, model.Partial, fmt.Sprintf("Critical Section (lock %q) mapped to a plain group: Load Meter has no cross-VU locking", n.str("CriticalSectionController.lockName")))
-		return []model.Step{{Type: model.StepGroup, Name: name, Comment: comment(n), Steps: im.buildLevel(k.kids, ctrl, loc)}}
+	case controlControllers[tc]: // while, foreach, switch, throughput, interleave, random(order), runtime, critical (control.go)
+		return im.controlController(k, sc, loc)
 	case tc == "LoopController":
 		return im.loopController(k, sc, loc)
 	case tc == "IfController":
@@ -1852,6 +1516,7 @@ func (im *importer) buildRequest(n *node, sc *scope, loc string, idx int) *model
 	for _, s := range ch {
 		for _, a := range s.asserts {
 			req.Assert = append(req.Assert, a.as...)
+			req.IgnoreStatus = req.IgnoreStatus || a.ignore
 			im.applied[a.item]++
 		}
 	}
@@ -1940,7 +1605,7 @@ func (im *importer) tgWorkload(n *node, loc string) (model.Workload, []string, b
 		notes = append(notes, fmt.Sprintf("on-sampler-error action %q not supported (Load Meter continues)", e))
 	}
 	if !n.boolean("ThreadGroup.same_user_on_next_iteration", true) {
-		info = append(info, "\"same user on each iteration\" is off: JMeter resets cookies/cache per iteration; verify Load Meter jar lifetime")
+		info = append(info, "\"same user on each iteration\" is off: mapped to workload.newUserEachIteration (fresh cookie jar, auth cache and per-VU connections each iteration)")
 	}
 	N := int(math.Round(threads))
 	w := model.Workload{}
@@ -1972,6 +1637,7 @@ func (im *importer) tgWorkload(n *node, loc string) (model.Workload, []string, b
 		notes = append(notes, fmt.Sprintf("infinite loop without scheduler: JMeter runs until stopped; Load Meter needs a bound, defaulted to %s", defaultUnboundedDuration))
 		rampStages(defaultUnboundedDuration.Seconds())
 	}
+	w.NewUserEachIteration = !n.boolean("ThreadGroup.same_user_on_next_iteration", true)
 	return w, append(notes, info...), len(notes) > 0
 }
 

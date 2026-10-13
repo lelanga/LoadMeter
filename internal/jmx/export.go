@@ -96,6 +96,8 @@ type exporter struct {
 	basePath string
 	defFol   *bool
 	seen     map[string]bool
+	// ignoreStatus: the request being written has ignoreStatus (checks.go).
+	ignoreStatus bool
 }
 
 func (ex *exporter) item(el, name, loc, status, note string) {
@@ -289,7 +291,7 @@ func (ex *exporter) tgProps(threads, ramp, loops int, sched bool, dur int64) {
 		w.str("ThreadGroup.duration", "")
 	}
 	w.str("ThreadGroup.delay", "")
-	w.boolp("ThreadGroup.same_user_on_next_iteration", true)
+	w.boolp("ThreadGroup.same_user_on_next_iteration", !ex.s.Workload.NewUserEachIteration)
 }
 
 func ceilSecs(d model.Duration) (int64, bool) {
@@ -368,6 +370,10 @@ func (ex *exporter) threadGroup() {
 	if wl.ThinkTimeScale != nil && *wl.ThinkTimeScale != 1 {
 		status = model.Partial
 		notes = append(notes, fmt.Sprintf("thinkTimeScale %g not applied: timers are written unscaled", *wl.ThinkTimeScale))
+	}
+	if wl.Arrivals == model.ArrivalsPoisson {
+		status = model.Partial
+		notes = append(notes, "poisson arrivals not exported (use a Precise Throughput Timer by hand)")
 	}
 	if wl.GracefulStop > 0 {
 		notes = append(notes, "gracefulStop has no JMeter equivalent (ignored)")
@@ -449,7 +455,7 @@ func (ex *exporter) csv(ds model.DataSource) {
 		w.boolp("recycle", recycle)
 		w.str("shareMode", share)
 		w.boolp("stopThread", stop)
-		w.str("variableNames", strings.Join(vn, delim))
+		w.str("variableNames", strings.Join(vn, ",")) // JMeter always splits variableNames on ","
 	}, nil)
 }
 
@@ -509,6 +515,9 @@ func (ex *exporter) commentProp(st model.Step) {
 }
 
 func (ex *exporter) step(st model.Step, loc string) {
+	if ex.controlStep(st, loc) { // control-flow steps (control.go)
+		return
+	}
 	w := ex.w
 	en := !st.Disabled
 	dis := ""
@@ -802,20 +811,12 @@ func (ex *exporter) request(st model.Step, thinks []model.Step, loc string) {
 		for _, e := range r.Extract {
 			ex.extractor(e, l)
 		}
+		ex.ignoreStatus = r.IgnoreStatus
 		for _, a := range r.Assert {
 			ex.assertion(a, l)
 		}
+		ex.flushIgnoreStatus(l)
 	})
-}
-
-func jmMatch(m int) string {
-	switch {
-	case m == 0:
-		return "1"
-	case m < 0:
-		return "0"
-	}
-	return strconv.Itoa(m)
 }
 
 func (ex *exporter) regexEl(name, useHeaders, re, tpl, def, match string) {
@@ -829,155 +830,4 @@ func (ex *exporter) regexEl(name, useHeaders, re, tpl, def, match string) {
 		w.boolp("RegexExtractor.default_empty_value", false)
 		w.str("RegexExtractor.match_number", match)
 	}, nil)
-}
-
-func (ex *exporter) extractor(e model.Extractor, loc string) {
-	w := ex.w
-	l := loc + "/" + e.Name
-	status, note := model.Supported, ""
-	if e.Required {
-		status, note = model.Partial, "required=true not representable: JMeter does not fail the sample when nothing is extracted (add an assertion on the default value)"
-	}
-	def := ex.fn(e.Default, l)
-	switch e.Type {
-	case model.ExRegex:
-		expr := ex.fn(e.Expr, l)
-		g := e.Group
-		if g == 0 {
-			if c, err := regexp.Compile(varRefRE.ReplaceAllString(e.Expr, "x")); err == nil && c.NumSubexp() > 0 {
-				g = 1
-			}
-		}
-		ex.item("extract.regex", e.Name, l, status, joinNote("Regular Expression Extractor (Go RE2 pattern written as-is; JMeter uses Perl5 syntax)", note))
-		ex.regexEl(e.Name, "false", expr, fmt.Sprintf("$%d$", g), def, jmMatch(e.Match))
-	case model.ExJSONPath:
-		ex.item("extract.jsonpath", e.Name, l, status, joinNote("JSON Extractor", note))
-		w.element("JSONPostProcessor", "JSONPostProcessorGui", e.Name, true, func() {
-			w.str("JSONPostProcessor.referenceNames", e.Name)
-			w.str("JSONPostProcessor.jsonPathExprs", ex.fn(e.Expr, l))
-			w.str("JSONPostProcessor.match_numbers", jmMatch(e.Match))
-			w.str("JSONPostProcessor.defaultValues", def)
-		}, nil)
-	case model.ExBoundary:
-		ex.item("extract.boundary", e.Name, l, status, joinNote("Boundary Extractor", note))
-		w.element("BoundaryExtractor", "BoundaryExtractorGui", e.Name, true, func() {
-			w.str("BoundaryExtractor.useHeaders", "false")
-			w.str("BoundaryExtractor.refname", e.Name)
-			w.str("BoundaryExtractor.lboundary", ex.fn(e.Left, l))
-			w.str("BoundaryExtractor.rboundary", ex.fn(e.Right, l))
-			w.str("BoundaryExtractor.default", def)
-			w.boolp("BoundaryExtractor.default_empty_value", false)
-			w.str("BoundaryExtractor.match_number", jmMatch(e.Match))
-		}, nil)
-	case model.ExXPath:
-		ex.item("extract.xpath", e.Name, l, model.Partial, joinNote("XPath2 Extractor: XPath dialects may differ; verify", note))
-		w.element("XPath2Extractor", "XPath2ExtractorGui", e.Name, true, func() {
-			w.str("XPathExtractor2.default", def)
-			w.str("XPathExtractor2.refname", e.Name)
-			w.str("XPathExtractor2.matchNumber", jmMatch(e.Match))
-			w.str("XPathExtractor2.xpathQuery", ex.fn(e.Expr, l))
-			w.boolp("XPathExtractor2.fragment", false)
-			w.str("XPathExtractor2.namespaces", "")
-		}, nil)
-	case model.ExHeader:
-		ex.item("extract.header", e.Name, l, status, joinNote("Regular Expression Extractor on response headers (case-insensitive header name)", note))
-		ex.regexEl(e.Name, "true", hdrPrefix+regexp.QuoteMeta(e.Expr)+hdrSuffix, "$1$", def, jmMatch(e.Match))
-	case model.ExCookie:
-		ex.item("extract.cookie", e.Name, l, model.Partial, joinNote("Regular Expression Extractor on Set-Cookie headers of this response only (Load Meter also falls back to the cookie jar)", note))
-		ex.regexEl(e.Name, "true", cookiePrefix+regexp.QuoteMeta(e.Expr)+cookieSuffix, "$1$", def, jmMatch(e.Match))
-	case model.ExStatus:
-		ex.item("extract.status", e.Name, l, status, joinNote("Regular Expression Extractor on the response code", note))
-		ex.regexEl(e.Name, "code", "(.*)", "$1$", def, "1")
-	default:
-		ex.item("extract."+e.Type, e.Name, l, model.Unsupported, "unknown extractor type; not exported")
-	}
-}
-
-func (ex *exporter) responseAssertion(name, field string, testType int, pats []string) {
-	w := ex.w
-	w.element("ResponseAssertion", "AssertionGui", name, true, func() {
-		w.open("collectionProp", "name", "Asserion.test_strings")
-		for _, p := range pats {
-			w.str(javaHash(p), p)
-		}
-		w.close("collectionProp")
-		w.str("Assertion.custom_message", "")
-		w.str("Assertion.test_field", field)
-		w.boolp("Assertion.assume_success", false)
-		w.intp("Assertion.test_type", testType)
-	}, nil)
-}
-
-func (ex *exporter) assertion(a model.Assertion, loc string) {
-	w := ex.w
-	l := loc + "/assert " + a.Type
-	val := ex.fn(a.Value, l)
-	switch a.Type {
-	case model.AsStatus:
-		var pats []string
-		classes := false
-		for _, v := range strings.Split(val, ",") {
-			v = strings.TrimSpace(v)
-			if v == "" {
-				continue
-			}
-			if len(v) == 3 && strings.HasSuffix(strings.ToLower(v), "xx") {
-				pats = append(pats, v[:1]+`\d\d`)
-				classes = true
-				continue
-			}
-			pats = append(pats, v)
-		}
-		if len(pats) == 0 {
-			ex.item("assert.status", "", l, model.Unsupported, "empty status list")
-			return
-		}
-		tt := 8
-		if classes {
-			tt = 1
-		}
-		if len(pats) > 1 {
-			tt |= 32
-		}
-		ex.item("assert.status", val, l, model.Supported, "Response Assertion on the response code")
-		ex.responseAssertion("Status "+val, "Assertion.response_code", tt, pats)
-	case model.AsContains:
-		ex.item("assert.contains", val, l, model.Supported, "Response Assertion (Substring)")
-		ex.responseAssertion("Contains", "Assertion.response_data", 16, []string{val})
-	case model.AsNotContains:
-		ex.item("assert.not_contains", val, l, model.Supported, "Response Assertion (Substring, NOT)")
-		ex.responseAssertion("Does not contain", "Assertion.response_data", 20, []string{val})
-	case model.AsRegex:
-		ex.item("assert.regex", a.Expr, l, model.Supported, "Response Assertion (Contains = regex find; Go RE2 pattern written as-is)")
-		ex.responseAssertion("Matches regex", "Assertion.response_data", 2, []string{ex.fn(a.Expr, l)})
-	case model.AsJSONPath:
-		ex.item("assert.jsonpath", a.Expr, l, model.Supported, "JSON Assertion")
-		w.element("JSONPathAssertion", "JSONPathAssertionGui", "JSON "+a.Expr, true, func() {
-			w.str("JSON_PATH", ex.fn(a.Expr, l))
-			w.str("EXPECTED_VALUE", val)
-			w.boolp("JSONVALIDATION", a.Value != "")
-			w.boolp("EXPECT_NULL", false)
-			w.boolp("INVERT", false)
-			w.boolp("ISREGEX", false)
-		}, nil)
-	case model.AsMaxLatency:
-		d, err := time.ParseDuration(strings.TrimSpace(a.Value))
-		if err != nil || d <= 0 {
-			ex.item("assert.max_latency", a.Value, l, model.Unsupported, "value is not a positive duration")
-			return
-		}
-		ex.item("assert.max_latency", a.Value, l, model.Supported, "Duration Assertion")
-		w.element("DurationAssertion", "DurationAssertionGui", "Max latency "+a.Value, true, func() {
-			w.str("DurationAssertion.duration", strconv.FormatInt(d.Milliseconds(), 10))
-		}, nil)
-	case model.AsHeader:
-		pat := a.Expr + ": " + val
-		if val == "" {
-			pat = a.Expr + ":"
-		}
-		ex.item("assert.header", a.Expr, l, model.Partial, "Response Assertion (Substring) on the raw response headers: case-sensitive, matches across the header block")
-		ex.responseAssertion("Header "+a.Expr, "Assertion.response_headers", 16, []string{pat})
-	default:
-		ex.item("assert."+a.Type, "", l, model.Unsupported, "unknown assertion type; not exported")
-	}
 }

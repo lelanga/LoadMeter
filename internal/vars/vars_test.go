@@ -173,10 +173,11 @@ func TestNestedExpansion(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 	_ = res
-	// variable value that looks like a template is not re-expanded
-	c.Vars["tpl"] = "${user}"
+	// a raw (extracted) value that looks like a template is not re-expanded
+	c.Vars["user"] = "bob"
+	c.SetRaw("tpl", "${user}")
 	if got, _ := c.Expand("${tpl}"); got != "${user}" {
-		t.Errorf("values must not be re-expanded: %q", got)
+		t.Errorf("raw values must not be re-expanded: %q", got)
 	}
 }
 
@@ -218,12 +219,24 @@ func TestFunctionsListed(t *testing.T) {
 	if len(Functions) == 0 {
 		t.Fatal("Functions empty")
 	}
+	noArgs := map[string]bool{"__uuid": true, "__randomString": true, "__timestamp": true, "__counter": true,
+		"__vu": true, "__iteration": true, "__timeShift": true}
 	for _, f := range Functions {
-		name := strings.TrimSuffix(strings.SplitN(f, "(", 2)[0], "")
+		name := strings.SplitN(f, "(", 2)[0]
+		if registry[name] == nil {
+			t.Errorf("documented function %s is not registered", f)
+		}
+		if !noArgs[name] {
+			continue
+		}
 		c := NewContext(1, 1)
-		_, res := c.Expand("${" + name + "}")
-		if len(res.Unresolved) > 0 && name != "__randomInt" && name != "__urlencode" && name != "__env" {
+		if _, res := c.Expand("${" + name + "}"); len(res.Unresolved) > 0 {
 			t.Errorf("documented function %s is not callable without args", f)
+		}
+	}
+	for a, n := range aliases {
+		if registry[a] == nil || registry[n] == nil {
+			t.Errorf("alias %s -> %s not registered", a, n)
 		}
 	}
 }

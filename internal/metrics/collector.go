@@ -44,6 +44,9 @@ type Sample struct {
 	Retries int
 	// BodyBytes is the decoded response body size (BytesIn counts wire bytes).
 	BodyBytes int64
+	// SubSamples / SubFailures (transactions only): request samples inside
+	// the transaction and how many failed (JTL transaction marking, jtl.go).
+	SubSamples, SubFailures int
 }
 
 type Stats struct {
@@ -109,6 +112,7 @@ type Collector struct {
 	Retries   uint64         // hidden transport retries (see Sample.Retries)
 	NewConns  uint64         // requests that opened a new connection
 	delta     *deltaAgg      // non-nil when TrackDeltas was called (distributed agents)
+	threads   jtlThreads     // active-VU source for the raw CSV (jtl.go)
 	nodeVUs   map[string]int // merged collectors: latest active VUs per node
 }
 
@@ -121,7 +125,9 @@ func NewCollector(start time.Time, raw io.Writer) *Collector {
 		_ = c.raw.Write([]string{"timeStamp", "elapsed", "label", "responseCode", "responseMessage", "threadName",
 			"success", "failureMessage", "bytes", "sentBytes", "Latency", "URL", "kind",
 			// Appended later; consumers read columns by name, so order above is stable.
-			"Connect", "dnsMs", "tlsMs", "connReused", "retries", "bodyBytes"})
+			"Connect", "dnsMs", "tlsMs", "connReused", "retries", "bodyBytes",
+			// JMeter thread counts (active VUs when the sample was recorded).
+			"grpThreads", "allThreads"})
 		c.raw.Flush() // header goes to rawBuf now; rows are appended to rawBuf directly
 	}
 	return c
@@ -150,7 +156,7 @@ func (c *Collector) Add(x Sample) {
 	end := x.Start.Add(x.Latency)
 	var rec *rawEnc
 	if c.raw != nil {
-		rec = encodeRaw(&x) // formatted outside the lock to keep the critical section short
+		rec = encodeRaw(&x, c.threadCount()) // formatted outside the lock to keep the critical section short
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -188,6 +194,7 @@ func (c *Collector) SetGauge(now time.Time, vus int, cpu, memMB float64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.activeVUs, c.cpu, c.mem = vus, cpu, memMB
+	c.threads.gauge.Store(int64(vus))
 	w := c.window(now)
 	w.ActiveVUs = max(w.ActiveVUs, vus)
 	w.CPUPercent = max(w.CPUPercent, cpu)

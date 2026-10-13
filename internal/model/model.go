@@ -125,6 +125,9 @@ type Step struct {
 	Select string `json:"select,omitempty"`
 	// Weight is this step's relative share inside a weighted group (default 1; 0 = never).
 	Weight *float64 `json:"weight,omitempty"`
+	// StepControl holds while/foreach/switch/percent/runtime/throughput/
+	// rendezvous/critical parameters (control.go).
+	StepControl
 }
 
 // Group selection modes.
@@ -159,6 +162,8 @@ type Request struct {
 	Assert          []Assertion `json:"assert,omitempty"`
 	// RequestHTTPOptions holds per-request connect/TLS/response-header timeouts (http.go).
 	RequestHTTPOptions
+	// RequestCheckOptions: ignoreStatus (checks.go).
+	RequestCheckOptions
 }
 
 type Part struct {
@@ -181,16 +186,18 @@ const (
 )
 
 type Extractor struct {
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	Expr    string `json:"expr,omitempty"`  // jsonpath, regex, xpath, header/cookie name
-	Left    string `json:"left,omitempty"`  // boundary
-	Right   string `json:"right,omitempty"` // boundary
-	Group   int    `json:"group,omitempty"` // regex capture group (default 1, or 0 if none)
-	Match   int    `json:"match,omitempty"` // 1-based match index; 0 = first; -1 = random
-	Default string `json:"default,omitempty"`
+	Name    string     `json:"name"`
+	Type    string     `json:"type"`
+	Expr    string     `json:"expr,omitempty"`  // jsonpath, regex, xpath, header/cookie name
+	Left    string     `json:"left,omitempty"`  // boundary
+	Right   string     `json:"right,omitempty"` // boundary
+	Group   int        `json:"group,omitempty"` // regex capture group (default 1, or 0 if none)
+	Match   MatchIndex `json:"match,omitempty"` // 1-based match index; 0 = first; -1 = random; "all" (checks.go)
+	Default string     `json:"default,omitempty"`
 	// Required marks the iteration failed when nothing is extracted.
 	Required bool `json:"required,omitempty"`
+	// ExtractorOptions: template, source, maxMatches (checks.go).
+	ExtractorOptions
 }
 
 // Assertion types.
@@ -208,6 +215,8 @@ type Assertion struct {
 	Type  string `json:"type"`
 	Expr  string `json:"expr,omitempty"`
 	Value string `json:"value,omitempty"`
+	// AssertionOptions: not, message, source, op, regex, expectNull (checks.go).
+	AssertionOptions
 }
 
 // Executors.
@@ -234,6 +243,8 @@ type Workload struct {
 	ThinkTimeScale *float64 `json:"thinkTimeScale,omitempty"`
 	// OnError: continue (default), abort-iteration, stop-vu.
 	OnError string `json:"onError,omitempty"`
+	// WorkloadControl: arrivals process, new user per iteration (control.go).
+	WorkloadControl
 }
 
 type Stage struct {
@@ -293,17 +304,14 @@ func (s *Scenario) Validate() []string {
 					default:
 						p = append(p, fmt.Sprintf("%s: unknown extractor type %q", where, e.Type))
 					}
+					p = append(p, validateExtractor(where, e)...)
 				}
 				p = append(p, st.Request.RequestHTTPOptions.validate(where)...)
 				for _, a := range st.Request.Assert {
 					if a.Type == AsMaxLatency && a.Expr != "" && !validTiming(a.Expr) {
 						p = append(p, fmt.Sprintf("%s: max_latency expr %q must be one of %v", where, a.Expr, TimingNames))
 					}
-					switch a.Type {
-					case AsStatus, AsContains, AsNotContains, AsRegex, AsJSONPath, AsMaxLatency, AsHeader:
-					default:
-						p = append(p, fmt.Sprintf("%s: unknown assertion type %q", where, a.Type))
-					}
+					p = append(p, validateAssertion(where, a)...)
 				}
 			case StepTransaction, StepGroup, StepIf:
 				if st.Type == StepTransaction && st.Name == "" {
@@ -311,8 +319,9 @@ func (s *Scenario) Validate() []string {
 				}
 				switch {
 				case st.Select == "":
+				case st.Select == SelectShuffle || st.Select == SelectRoundRobin:
 				case st.Select != SelectWeighted:
-					p = append(p, fmt.Sprintf("%s: unknown select mode %q (expected %q)", where, st.Select, SelectWeighted))
+					p = append(p, fmt.Sprintf("%s: unknown select mode %q (expected %q, %q or %q)", where, st.Select, SelectWeighted, SelectShuffle, SelectRoundRobin))
 				default:
 					total := 0.0
 					for _, c := range st.Steps {
@@ -342,6 +351,9 @@ func (s *Scenario) Validate() []string {
 					}
 				}
 			case StepSetVar:
+			case StepWhile, StepForeach, StepSwitch, StepPercent, StepRuntime, StepThroughput, StepRendezvous, StepCritical:
+				p = append(p, validateControl(where, &steps[i])...)
+				walk(where+".steps", st.Steps)
 			default:
 				p = append(p, fmt.Sprintf("%s: unknown step type %q", where, st.Type))
 			}
@@ -390,6 +402,7 @@ func (s *Scenario) Validate() []string {
 			p = append(p, fmt.Sprintf("data source %q: unknown mode %q", d.Name, d.Mode))
 		}
 	}
+	p = append(p, w.validateControl()...)
 	p = append(p, s.Defaults.validateHTTP()...)
 	for _, sla := range s.SLAs {
 		switch sla.Op {

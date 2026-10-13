@@ -57,6 +57,7 @@ func (e *exporter) body() string {
 		e.line("}")
 		e.rep.Add("teardown", "", "teardown", model.Partial, "k6 teardown() runs once per test, not per VU, and does not see variables extracted during the run")
 	}
+	e.workloadControl() // control.go
 	switch s.Workload.OnError {
 	case "stop-vu":
 		e.rep.Add("workload.onError", "stop-vu", "workload.onError", model.Partial, "mapped to abort-iteration; k6 cannot stop a single VU")
@@ -75,6 +76,9 @@ func (e *exporter) steps(steps []model.Step, loc string) {
 		l := fmt.Sprintf("%s[%d]", loc, i)
 		if st.Disabled {
 			e.rep.Add(st.Type, st.Name, l, model.Ignored, "disabled step skipped")
+			continue
+		}
+		if e.controlStep(st, l) { // control.go
 			continue
 		}
 		switch st.Type {
@@ -183,6 +187,7 @@ func (e *exporter) request(st *model.Step, loc string) {
 		}
 		checks = append(checks, fmt.Sprintf("%s: function (r) { return %s; }", js(label), expr))
 	}
+	e.parityNotes(rq) // checks.go
 	for _, x := range rq.Extract {
 		def := "undefined"
 		if x.Default != "" {
